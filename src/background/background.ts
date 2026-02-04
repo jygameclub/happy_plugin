@@ -90,9 +90,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: 'Invalid input: command must be a string' });
         break;
       }
-      const isDangerous = aiJudge.isDangerousCommand(command);
-      sendResponse({ success: true, data: { isDangerous } });
+      const result = aiJudge.checkDangerousCommand(command);
+      sendResponse({ success: true, data: result });
       break;
+    }
+    case 'DETECT_WAITING_STATE': {
+      const { recentText } = message;
+      if (!Array.isArray(recentText)) {
+        sendResponse({ success: false, error: 'Invalid input: recentText must be an array' });
+        break;
+      }
+      // 规则检测
+      const lastLine = recentText[recentText.length - 1] || '';
+      const promptPatterns = [
+        { pattern: /\$\s*$/, name: 'Shell 提示符 ($)' },
+        { pattern: />\s*$/, name: '箭头提示符 (>)' },
+        { pattern: /:\s*$/, name: '冒号提示符 (:)' },
+        { pattern: /\?\s*$/, name: '问号提示符 (?)' },
+        { pattern: /input/i, name: '包含 "input"' },
+        { pattern: /enter/i, name: '包含 "enter"' },
+        { pattern: /password/i, name: '包含 "password"' },
+        { pattern: /y\/n/i, name: '确认提示 (y/n)' },
+        { pattern: /\[Y\/n\]/i, name: '确认提示 [Y/n]' },
+        { pattern: /press\s+any\s+key/i, name: '按任意键继续' },
+      ];
+
+      let ruleWaiting = false;
+      let matchedPatternName = null;
+      for (const p of promptPatterns) {
+        if (p.pattern.test(lastLine)) {
+          ruleWaiting = true;
+          matchedPatternName = p.name;
+          break;
+        }
+      }
+
+      // AI 检测（使用现有的 analyze 方法）
+      const input = aiJudge.formatInput(recentText, {});
+      aiJudge.analyze(input).then((aiResult) => {
+        sendResponse({
+          success: true,
+          data: {
+            ruleBasedResult: {
+              waiting: ruleWaiting,
+              matchedPattern: matchedPatternName,
+              lastLine: lastLine.substring(0, 100),
+            },
+            aiResult: {
+              waiting: aiResult.state === 'WAITING_INPUT',
+              state: aiResult.state,
+              confidence: aiResult.confidence,
+              role: aiResult.role,
+            },
+          },
+        });
+      });
+      return true; // Keep channel open for async response
     }
     case 'CHAT_TEST': {
       const chatConfig = message.config as APIConfig;

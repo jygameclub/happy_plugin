@@ -315,6 +315,96 @@
       </div>
     </section>
 
+    <!-- Section: 调试工具 -->
+    <section class="panel collapsed" data-panel="debug-tools">
+      <div class="panel-header" data-toggle="debug-tools">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">调试工具</span>
+      </div>
+      <div class="panel-content" id="debug-tools-content">
+        <!-- 6.7 输出监听测试 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">输出监听测试</span>
+            <button class="btn btn-small btn-primary" id="test-output-listener-btn">测试</button>
+          </div>
+          <div class="debug-info-grid">
+            <div class="debug-info-item">
+              <span class="debug-info-label">捕获行数:</span>
+              <input type="number" class="input-number" id="output-listener-lines" value="10" min="1" max="100" style="width: 60px;">
+            </div>
+          </div>
+          <div class="debug-result" id="output-listener-result">
+            <div class="debug-empty">点击"测试"捕获会话输出</div>
+          </div>
+        </div>
+
+        <!-- 6.8 等待状态检测对比 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">等待状态检测</span>
+            <button class="btn btn-small btn-primary" id="detect-waiting-btn">检测</button>
+          </div>
+          <div class="waiting-state-comparison" id="waiting-state-result">
+            <div class="debug-empty">点击"检测"分析等待状态</div>
+          </div>
+        </div>
+
+        <!-- 6.9 超时模拟 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">超时模拟</span>
+          </div>
+          <div class="timeout-controls">
+            <div class="timeout-display" id="timeout-display">
+              <span class="timeout-value">--</span>
+              <span class="timeout-label">秒</span>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-small btn-primary" id="start-timeout-btn">开始 30s 倒计时</button>
+              <button class="btn btn-small btn-warning" id="stop-timeout-btn" disabled>停止</button>
+            </div>
+          </div>
+          <div class="timeout-status" id="timeout-status">
+            <span class="timeout-status-text">未启动</span>
+          </div>
+        </div>
+
+        <!-- 6.10 危险命令测试 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">危险命令测试</span>
+          </div>
+          <div class="form-group">
+            <label class="label">输入命令:</label>
+            <input type="text" class="input-text" id="danger-command-input" placeholder="输入命令测试是否危险...">
+          </div>
+          <button class="btn btn-small btn-primary" id="check-danger-btn">检测</button>
+          <div class="danger-result" id="danger-result">
+            <div class="debug-empty">输入命令后点击"检测"</div>
+          </div>
+        </div>
+
+        <!-- 6.11 注入回滚测试 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">注入回滚测试</span>
+          </div>
+          <div class="form-group">
+            <label class="label">测试文本:</label>
+            <input type="text" class="input-text" id="rollback-test-input" value="测试注入文本 - 将被回滚">
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-small btn-primary" id="inject-test-btn">注入</button>
+            <button class="btn btn-small btn-warning" id="rollback-test-btn" disabled>回滚</button>
+          </div>
+          <div class="rollback-status" id="rollback-status">
+            <div class="debug-empty">测试注入后自动回滚</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Section 5: 动作模拟 -->
     <section class="panel collapsed" data-panel="action">
       <div class="panel-header" data-toggle="action">

@@ -18,6 +18,18 @@ interface PendingAction {
   command: string;
 }
 
+interface TimeoutState {
+  intervalId: number | null;
+  remaining: number;
+  isRunning: boolean;
+}
+
+interface RollbackState {
+  previousValue: string | null;
+  sessionId: string | null;
+  isInjected: boolean;
+}
+
 class DebugConsole {
   private sessions: Session[] = [];
   private activeSessionId: string | null = null;
@@ -25,6 +37,8 @@ class DebugConsole {
   private logs: LogEntry[] = [];
   private configStorage: ConfigStorage;
   private currentScreenshot: string | null = null;
+  private timeoutState: TimeoutState = { intervalId: null, remaining: 30, isRunning: false };
+  private rollbackState: RollbackState = { previousValue: null, sessionId: null, isInjected: false };
 
   constructor() {
     this.configStorage = new ConfigStorage();
@@ -159,6 +173,29 @@ class DebugConsole {
     });
     document.getElementById('test-get-chat-btn')?.addEventListener('click', () => {
       this.testGetChatMessages();
+    });
+
+    // Debug tools section
+    document.getElementById('test-output-listener-btn')?.addEventListener('click', () => {
+      this.testOutputListener();
+    });
+    document.getElementById('detect-waiting-btn')?.addEventListener('click', () => {
+      this.detectWaitingState();
+    });
+    document.getElementById('start-timeout-btn')?.addEventListener('click', () => {
+      this.startTimeoutSimulation();
+    });
+    document.getElementById('stop-timeout-btn')?.addEventListener('click', () => {
+      this.stopTimeoutSimulation();
+    });
+    document.getElementById('check-danger-btn')?.addEventListener('click', () => {
+      this.checkDangerousCommand();
+    });
+    document.getElementById('inject-test-btn')?.addEventListener('click', () => {
+      this.injectTestText();
+    });
+    document.getElementById('rollback-test-btn')?.addEventListener('click', () => {
+      this.rollbackTestText();
     });
   }
 
@@ -716,6 +753,29 @@ class DebugConsole {
       return;
     }
 
+    // 检查是否为危险命令
+    const dangerCheck = await this.sendToBackground<{
+      success: boolean;
+      data: { isDangerous: boolean; description: string | null };
+    }>({
+      type: 'CHECK_DANGEROUS',
+      command: this.pendingAction.command,
+    });
+
+    if (dangerCheck?.data?.isDangerous) {
+      this.log('动作', `危险命令被拦截: ${dangerCheck.data.description}`, 'error');
+      alert(`危险命令被拦截!\n\n原因: ${dangerCheck.data.description}\n\n命令: ${this.pendingAction.command}`);
+      return;
+    }
+
+    // 显示确认弹窗
+    const confirmed = await this.showConfirmationModal(this.pendingAction);
+
+    if (!confirmed) {
+      this.log('动作', '用户取消执行', 'info');
+      return;
+    }
+
     this.log('动作', `正在执行: "${this.pendingAction.command.substring(0, 50)}..."`);
 
     // Send execute command to content script
@@ -725,8 +785,11 @@ class DebugConsole {
       text: this.pendingAction.command,
     });
 
-    // Note: Actual execution (pressing Enter) would be handled by content script
-    // For now, we log the action
+    // 模拟按下 Enter 键发送
+    await this.sendToContent({
+      type: 'SIMULATE_SEND',
+    });
+
     this.log('动作', '动作执行成功', 'success');
 
     this.pendingAction = null;
@@ -1346,6 +1409,434 @@ class DebugConsole {
       if (contentEl) contentEl.innerHTML = '<div class="debug-empty">读取失败</div>';
       this.log('测试', '读取聊天内容失败', 'error');
     }
+  }
+
+  // ==================== Debug Tools (6.7 - 6.11) ====================
+
+  // 6.7 输出监听测试
+  private async testOutputListener(): Promise<void> {
+    if (!this.activeSessionId) {
+      this.log('输出测试', '请先选择活动会话', 'error');
+      return;
+    }
+
+    const linesEl = document.getElementById('output-listener-lines') as HTMLInputElement;
+    const resultEl = document.getElementById('output-listener-result');
+    const lines = parseInt(linesEl?.value || '10', 10);
+
+    this.log('输出测试', `正在捕获最后 ${lines} 行输出...`);
+
+    const response = await this.sendToContent<{ output: string[] }>({
+      type: 'GET_SESSION_OUTPUT',
+      sessionId: this.activeSessionId,
+      lines,
+    });
+
+    if (!resultEl) return;
+
+    if (response?.output && response.output.length > 0) {
+      const outputHtml = response.output.map((line, index) => `
+        <div class="output-line" style="padding: 2px 0; border-bottom: 1px solid #2a2a2a; font-family: monospace; font-size: 11px;">
+          <span style="color: #888; margin-right: 8px;">${index + 1}</span>
+          <span style="color: #ccc;">${this.escapeHtml(line)}</span>
+        </div>
+      `).join('');
+
+      resultEl.innerHTML = `
+        <div style="margin-bottom: 8px; font-size: 11px; color: #4caf50;">✓ 成功捕获 ${response.output.length} 行</div>
+        <div style="max-height: 150px; overflow-y: auto; background: #1e1e1e; border-radius: 4px; padding: 8px;">
+          ${outputHtml}
+        </div>
+      `;
+      this.log('输出测试', `成功捕获 ${response.output.length} 行`, 'success');
+    } else {
+      resultEl.innerHTML = '<div class="debug-empty">未捕获到输出内容</div>';
+      this.log('输出测试', '未捕获到输出内容', 'error');
+    }
+  }
+
+  // 6.8 等待状态检测对比
+  private async detectWaitingState(): Promise<void> {
+    if (!this.activeSessionId) {
+      this.log('等待检测', '请先选择活动会话', 'error');
+      return;
+    }
+
+    const resultEl = document.getElementById('waiting-state-result');
+    if (!resultEl) return;
+
+    resultEl.innerHTML = '<div class="debug-empty">正在检测...</div>';
+    this.log('等待检测', '正在检测等待状态...');
+
+    // 先获取输出
+    const outputResponse = await this.sendToContent<{ output: string[] }>({
+      type: 'GET_SESSION_OUTPUT',
+      sessionId: this.activeSessionId,
+      lines: 10,
+    });
+
+    if (!outputResponse?.output) {
+      resultEl.innerHTML = '<div class="debug-empty">获取会话输出失败</div>';
+      this.log('等待检测', '获取会话输出失败', 'error');
+      return;
+    }
+
+    // 发送到后台进行检测
+    const response = await this.sendToBackground<{
+      success: boolean;
+      data: {
+        ruleBasedResult: { waiting: boolean; matchedPattern: string | null; lastLine: string };
+        aiResult: { waiting: boolean; state: string; confidence: number; role: string };
+      };
+    }>({
+      type: 'DETECT_WAITING_STATE',
+      recentText: outputResponse.output,
+    });
+
+    if (response?.success && response.data) {
+      const { ruleBasedResult, aiResult } = response.data;
+
+      resultEl.innerHTML = `
+        <div class="waiting-comparison-row">
+          <span class="waiting-comparison-label">规则检测:</span>
+          <span class="waiting-comparison-value ${ruleBasedResult.waiting ? 'waiting' : 'not-waiting'}">
+            ${ruleBasedResult.waiting ? '等待输入' : '运行中'}
+          </span>
+        </div>
+        <div class="waiting-comparison-row">
+          <span class="waiting-comparison-label">AI 检测:</span>
+          <span class="waiting-comparison-value ${aiResult.waiting ? 'waiting' : 'not-waiting'}">
+            ${aiResult.waiting ? '等待输入' : '运行中'} (${Math.round(aiResult.confidence * 100)}%)
+          </span>
+        </div>
+        <div class="waiting-comparison-row">
+          <span class="waiting-comparison-label">判定一致:</span>
+          <span class="waiting-comparison-value ${ruleBasedResult.waiting === aiResult.waiting ? 'not-waiting' : 'waiting'}">
+            ${ruleBasedResult.waiting === aiResult.waiting ? '一致' : '不一致'}
+          </span>
+        </div>
+        <div class="waiting-signals">
+          <div><strong>规则匹配:</strong> ${ruleBasedResult.matchedPattern || '无匹配'}</div>
+          <div><strong>AI 角色:</strong> ${aiResult.role}</div>
+          <div><strong>最后一行:</strong> ${this.escapeHtml(ruleBasedResult.lastLine)}</div>
+        </div>
+      `;
+
+      this.log('等待检测', `规则: ${ruleBasedResult.waiting ? '等待' : '运行'}, AI: ${aiResult.waiting ? '等待' : '运行'}`, 'success');
+    } else {
+      resultEl.innerHTML = '<div class="debug-empty">检测失败</div>';
+      this.log('等待检测', '检测失败', 'error');
+    }
+  }
+
+  // 6.9 超时模拟
+  private startTimeoutSimulation(): void {
+    if (this.timeoutState.isRunning) return;
+
+    const displayEl = document.getElementById('timeout-display');
+    const valueEl = displayEl?.querySelector('.timeout-value');
+    const statusEl = document.getElementById('timeout-status');
+    const statusTextEl = statusEl?.querySelector('.timeout-status-text');
+    const startBtn = document.getElementById('start-timeout-btn') as HTMLButtonElement;
+    const stopBtn = document.getElementById('stop-timeout-btn') as HTMLButtonElement;
+
+    this.timeoutState.remaining = 30;
+    this.timeoutState.isRunning = true;
+
+    if (displayEl) displayEl.classList.add('running');
+    if (displayEl) displayEl.classList.remove('expired');
+    if (valueEl) valueEl.textContent = '30';
+    if (statusTextEl) {
+      statusTextEl.textContent = '正在模拟 WAITING_INPUT 状态...';
+      statusTextEl.classList.add('waiting');
+      statusTextEl.classList.remove('expired');
+    }
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
+
+    this.log('超时模拟', '开始 30 秒倒计时');
+
+    this.timeoutState.intervalId = window.setInterval(() => {
+      this.timeoutState.remaining--;
+
+      if (valueEl) valueEl.textContent = String(this.timeoutState.remaining);
+
+      if (this.timeoutState.remaining <= 0) {
+        this.onTimeoutExpired();
+      }
+    }, 1000);
+  }
+
+  private stopTimeoutSimulation(): void {
+    if (!this.timeoutState.isRunning) return;
+
+    if (this.timeoutState.intervalId !== null) {
+      clearInterval(this.timeoutState.intervalId);
+      this.timeoutState.intervalId = null;
+    }
+
+    this.timeoutState.isRunning = false;
+
+    const displayEl = document.getElementById('timeout-display');
+    const valueEl = displayEl?.querySelector('.timeout-value');
+    const statusEl = document.getElementById('timeout-status');
+    const statusTextEl = statusEl?.querySelector('.timeout-status-text');
+    const startBtn = document.getElementById('start-timeout-btn') as HTMLButtonElement;
+    const stopBtn = document.getElementById('stop-timeout-btn') as HTMLButtonElement;
+
+    if (displayEl) displayEl.classList.remove('running', 'expired');
+    if (valueEl) valueEl.textContent = '--';
+    if (statusTextEl) {
+      statusTextEl.textContent = '已停止';
+      statusTextEl.classList.remove('waiting', 'expired');
+    }
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+
+    this.log('超时模拟', '倒计时已停止');
+  }
+
+  private onTimeoutExpired(): void {
+    if (this.timeoutState.intervalId !== null) {
+      clearInterval(this.timeoutState.intervalId);
+      this.timeoutState.intervalId = null;
+    }
+
+    this.timeoutState.isRunning = false;
+
+    const displayEl = document.getElementById('timeout-display');
+    const valueEl = displayEl?.querySelector('.timeout-value');
+    const statusEl = document.getElementById('timeout-status');
+    const statusTextEl = statusEl?.querySelector('.timeout-status-text');
+    const startBtn = document.getElementById('start-timeout-btn') as HTMLButtonElement;
+    const stopBtn = document.getElementById('stop-timeout-btn') as HTMLButtonElement;
+
+    if (displayEl) {
+      displayEl.classList.remove('running');
+      displayEl.classList.add('expired');
+    }
+    if (valueEl) valueEl.textContent = '0';
+    if (statusTextEl) {
+      statusTextEl.textContent = '超时! 等待输入已超过 30 秒';
+      statusTextEl.classList.remove('waiting');
+      statusTextEl.classList.add('expired');
+    }
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+
+    this.log('超时模拟', '30 秒超时已到期!', 'error');
+  }
+
+  // 6.10 危险命令测试
+  private async checkDangerousCommand(): Promise<void> {
+    const inputEl = document.getElementById('danger-command-input') as HTMLInputElement;
+    const resultEl = document.getElementById('danger-result');
+    const command = inputEl?.value.trim() || '';
+
+    if (!command) {
+      this.log('危险检测', '请输入命令', 'error');
+      return;
+    }
+
+    this.log('危险检测', `检测命令: ${command.substring(0, 50)}...`);
+
+    const response = await this.sendToBackground<{
+      success: boolean;
+      data: { isDangerous: boolean; matchedPattern: string | null; description: string | null };
+    }>({
+      type: 'CHECK_DANGEROUS',
+      command,
+    });
+
+    if (!resultEl) return;
+
+    if (response?.success && response.data) {
+      const { isDangerous, description } = response.data;
+
+      if (isDangerous) {
+        resultEl.className = 'danger-result dangerous';
+        resultEl.innerHTML = `
+          <div style="display: flex; align-items: center;">
+            <span class="danger-result-icon">⚠️</span>
+            <span class="danger-result-text">危险命令!</span>
+          </div>
+          <div class="danger-matched-pattern">
+            <strong>原因:</strong> ${description || '匹配危险模式'}
+          </div>
+        `;
+        this.log('危险检测', `危险! ${description}`, 'error');
+      } else {
+        resultEl.className = 'danger-result safe';
+        resultEl.innerHTML = `
+          <div style="display: flex; align-items: center;">
+            <span class="danger-result-icon">✓</span>
+            <span class="danger-result-text">命令安全</span>
+          </div>
+        `;
+        this.log('危险检测', '命令安全', 'success');
+      }
+    } else {
+      resultEl.className = 'danger-result';
+      resultEl.innerHTML = '<div class="debug-empty">检测失败</div>';
+      this.log('危险检测', '检测失败', 'error');
+    }
+  }
+
+  // 6.11 注入回滚测试
+  private async injectTestText(): Promise<void> {
+    if (!this.activeSessionId) {
+      this.log('注入测试', '请先选择活动会话', 'error');
+      return;
+    }
+
+    const inputEl = document.getElementById('rollback-test-input') as HTMLInputElement;
+    const statusEl = document.getElementById('rollback-status');
+    const rollbackBtn = document.getElementById('rollback-test-btn') as HTMLButtonElement;
+    const text = inputEl?.value || '测试注入文本';
+
+    this.log('注入测试', `正在注入: ${text.substring(0, 30)}...`);
+
+    // 先获取当前值用于回滚
+    const currentValueResponse = await this.sendToContent<{ value: string }>({
+      type: 'GET_INPUT_VALUE',
+    });
+
+    this.rollbackState.previousValue = currentValueResponse?.value || '';
+    this.rollbackState.sessionId = this.activeSessionId;
+
+    // 执行注入
+    const response = await this.sendToContent<{ success: boolean }>({
+      type: 'PREVIEW_INPUT',
+      sessionId: this.activeSessionId,
+      text,
+    });
+
+    if (!statusEl) return;
+
+    if (response?.success) {
+      this.rollbackState.isInjected = true;
+      statusEl.className = 'rollback-status injected';
+      statusEl.innerHTML = `
+        <div class="rollback-step">
+          <span class="rollback-step-icon done">✓</span>
+          <span>已注入: "${this.escapeHtml(text.substring(0, 30))}${text.length > 30 ? '...' : ''}"</span>
+        </div>
+        <div class="rollback-step">
+          <span class="rollback-step-icon pending">2</span>
+          <span>点击"回滚"恢复原值</span>
+        </div>
+      `;
+      if (rollbackBtn) rollbackBtn.disabled = false;
+      this.log('注入测试', '注入成功', 'success');
+    } else {
+      statusEl.innerHTML = '<div class="debug-empty">注入失败</div>';
+      this.log('注入测试', '注入失败', 'error');
+    }
+  }
+
+  private async rollbackTestText(): Promise<void> {
+    if (!this.rollbackState.isInjected || !this.rollbackState.sessionId) {
+      this.log('回滚测试', '没有可回滚的内容', 'error');
+      return;
+    }
+
+    const statusEl = document.getElementById('rollback-status');
+    const rollbackBtn = document.getElementById('rollback-test-btn') as HTMLButtonElement;
+
+    this.log('回滚测试', '正在回滚...');
+
+    // 清除预览并恢复
+    await this.sendToContent({
+      type: 'CLEAR_PREVIEW',
+      sessionId: this.rollbackState.sessionId,
+    });
+
+    // 如果有之前的值，恢复它
+    if (this.rollbackState.previousValue) {
+      await this.sendToContent({
+        type: 'PREVIEW_INPUT',
+        sessionId: this.rollbackState.sessionId,
+        text: this.rollbackState.previousValue,
+      });
+      // 再清除高亮
+      await this.sendToContent({
+        type: 'CLEAR_PREVIEW',
+        sessionId: this.rollbackState.sessionId,
+      });
+    }
+
+    this.rollbackState.isInjected = false;
+
+    if (statusEl) {
+      statusEl.className = 'rollback-status rolledback';
+      statusEl.innerHTML = `
+        <div class="rollback-step">
+          <span class="rollback-step-icon done">✓</span>
+          <span>已注入</span>
+        </div>
+        <div class="rollback-step">
+          <span class="rollback-step-icon done">✓</span>
+          <span>已回滚到原值${this.rollbackState.previousValue ? `: "${this.escapeHtml(this.rollbackState.previousValue.substring(0, 20))}"` : ''}</span>
+        </div>
+      `;
+    }
+    if (rollbackBtn) rollbackBtn.disabled = true;
+    this.log('回滚测试', '回滚成功', 'success');
+  }
+
+  // ==================== Action Confirmation Modal ====================
+
+  private showConfirmationModal(action: PendingAction): Promise<boolean> {
+    return new Promise((resolve) => {
+      // 创建模态框
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+
+      const content = document.createElement('div');
+      content.className = 'modal-content';
+
+      content.innerHTML = `
+        <div class="modal-header">
+          <span class="modal-icon warning">⚠️</span>
+          <span class="modal-title">确认执行</span>
+        </div>
+        <div class="modal-body">
+          <p class="modal-message">确定要执行以下命令吗？</p>
+          <div class="modal-command">${this.escapeHtml(action.command)}</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modal-cancel-btn">取消</button>
+          <button class="btn btn-warning" id="modal-confirm-btn">确认执行</button>
+        </div>
+      `;
+
+      overlay.appendChild(content);
+      document.body.appendChild(overlay);
+
+      const cancelBtn = content.querySelector('#modal-cancel-btn');
+      const confirmBtn = content.querySelector('#modal-confirm-btn');
+
+      const cleanup = () => {
+        document.body.removeChild(overlay);
+      };
+
+      cancelBtn?.addEventListener('click', () => {
+        cleanup();
+        resolve(false);
+      });
+
+      confirmBtn?.addEventListener('click', () => {
+        cleanup();
+        resolve(true);
+      });
+
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          cleanup();
+          resolve(false);
+        }
+      });
+    });
   }
 
   // ==================== Utilities ====================
