@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Happy Debug</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Happy Debug Console</h1>
+    <p class="description">Multi-terminal debug tool</p>
+    <button class="btn-primary" id="btn-open-panel">Open Debug Panel</button>
+    <div class="quick-status">
+      <div class="status-item">
+        <span class="label">Sessions:</span>
+        <span id="session-count">-</span>
+      </div>
+      <div class="status-item">
+        <span class="label">Active:</span>
+        <span id="active-session">None</span>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
