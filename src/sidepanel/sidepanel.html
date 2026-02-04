@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Happy Debug Console</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="header-title">Happy Debug Console</h1>
+      <span class="header-version">v1.0.0</span>
+    </header>
+
+    <!-- Section 1: Environment -->
+    <section class="panel" data-panel="environment">
+      <div class="panel-header" data-toggle="environment">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">Environment</span>
+      </div>
+      <div class="panel-content" id="environment-content">
+        <div class="api-status-list">
+          <div class="api-status-item">
+            <span class="api-name">MiniMax API</span>
+            <span class="api-indicator" id="minimax-status">--</span>
+            <button class="btn btn-small" id="check-minimax-btn">Check</button>
+          </div>
+          <div class="api-status-item">
+            <span class="api-name">GLM API</span>
+            <span class="api-indicator" id="glm-status">--</span>
+            <button class="btn btn-small" id="check-glm-btn">Check</button>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" id="check-all-api-btn">Check All APIs</button>
+      </div>
+    </section>
+
+    <!-- Section 2: Session / Terminal -->
+    <section class="panel" data-panel="session">
+      <div class="panel-header" data-toggle="session">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">Session / Terminal</span>
+      </div>
+      <div class="panel-content" id="session-content">
+        <button class="btn btn-primary btn-full" id="scan-sessions-btn">Scan Sessions</button>
+        <div class="session-list" id="session-list">
+          <div class="session-empty">No sessions found. Click "Scan Sessions" to detect terminals.</div>
+        </div>
+        <div class="active-session-display">
+          <label class="label">Active Session:</label>
+          <div class="active-session-info" id="active-session-info">None selected</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Input Simulation -->
+    <section class="panel" data-panel="input">
+      <div class="panel-header" data-toggle="input">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">Input Simulation</span>
+      </div>
+      <div class="panel-content" id="input-content">
+        <textarea
+          class="input-textarea"
+          id="input-text"
+          placeholder="Enter command to simulate..."
+          rows="4"
+        ></textarea>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="preview-input-btn">Preview</button>
+          <button class="btn btn-secondary" id="clear-input-btn">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: API / AI Judge -->
+    <section class="panel" data-panel="ai-judge">
+      <div class="panel-header" data-toggle="ai-judge">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">API / AI Judge</span>
+      </div>
+      <div class="panel-content" id="ai-judge-content">
+        <div class="form-group">
+          <label class="label" for="line-count">Lines to analyze:</label>
+          <input
+            type="number"
+            class="input-number"
+            id="line-count"
+            value="20"
+            min="1"
+            max="100"
+          >
+        </div>
+        <button class="btn btn-primary btn-full" id="analyze-btn">Analyze Session</button>
+        <div class="ai-result" id="ai-result">
+          <div class="ai-result-empty">No analysis yet. Click "Analyze Session" to get AI judgment.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: Action Simulation -->
+    <section class="panel" data-panel="action">
+      <div class="panel-header" data-toggle="action">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">Action Simulation</span>
+      </div>
+      <div class="panel-content" id="action-content">
+        <div class="action-preview" id="action-preview">
+          <div class="action-preview-empty">No action pending</div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="execute-action-btn" disabled>Execute</button>
+          <button class="btn btn-warning" id="cancel-action-btn" disabled>Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 6: Logs & Inspector -->
+    <section class="panel" data-panel="logs">
+      <div class="panel-header" data-toggle="logs">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">Logs & Inspector</span>
+      </div>
+      <div class="panel-content" id="logs-content">
+        <div class="log-viewer" id="log-viewer">
+          <div class="log-empty">No logs yet.</div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-secondary" id="export-logs-btn">Export</button>
+          <button class="btn btn-warning" id="clear-logs-btn">Clear</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="sidepanel.js" type="module"></script>
+</body>
+</html>
