@@ -214,6 +214,60 @@ body {
   color: #ffffff;
 }
 
+/* API Config Section */
+.api-config-section {
+  background-color: #1e1e1e;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.api-config-section:last-of-type {
+  margin-bottom: 10px;
+}
+
+.api-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.api-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-text {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  background-color: #2a2a2a;
+  color: #cccccc;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.input-text:focus {
+  outline: none;
+  border-color: #0078d4;
+}
+
+.input-text::placeholder {
+  color: #666666;
+}
+
+.input-text.error {
+  border-color: #c62828;
+}
+
+.input-text.success {
+  border-color: #2e7d32;
+}
+
 /* Session List */
 .session-list {
   max-height: 200px;

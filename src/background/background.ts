@@ -50,18 +50,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     case 'CHECK_API': {
       const config = message.config as APIConfig;
+      const provider = message.provider as 'minimax' | 'glm';
       if (!config || !config.apiKey || !config.baseUrl) {
-        sendResponse({ success: false, error: 'Invalid API configuration' });
+        sendResponse({
+          provider,
+          connected: false,
+          latency: null,
+          error: '未配置 API Key 或 Base URL',
+        });
         break;
       }
       apiClient = new APIClient(config);
       aiJudge.setClient(apiClient);
       apiClient.checkConnection().then((result) => {
         sendResponse({
-          success: result.success,
-          data: result.data,
-          latency: result.latency,
-          error: result.error,
+          provider,
+          connected: result.success && result.data?.connected === true,
+          latency: result.latency ?? null,
+          error: result.error ?? null,
         });
       });
       return true; // Keep channel open for async response

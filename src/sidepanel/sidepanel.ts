@@ -3,6 +3,7 @@
 import type { Session } from '../types/session';
 import type { AIJudgeOutput, APIStatus } from '../types/ai-judge';
 import type { Message } from '../types/messages';
+import { ConfigStorage, type APIProviderConfig } from '../services/config-storage';
 
 interface LogEntry {
   timestamp: string;
@@ -22,11 +23,14 @@ class DebugConsole {
   private activeSessionId: string | null = null;
   private pendingAction: PendingAction | null = null;
   private logs: LogEntry[] = [];
+  private configStorage: ConfigStorage;
 
   constructor() {
+    this.configStorage = new ConfigStorage();
     this.initPanelToggles();
     this.initEventListeners();
     this.loadInitialState();
+    this.loadAPIConfigs();
     this.log('信息', '调试控制台已初始化');
   }
 
@@ -47,7 +51,13 @@ class DebugConsole {
   // ==================== Event Listeners ====================
 
   private initEventListeners(): void {
-    // Environment section
+    // Environment / API Config section
+    document.getElementById('save-minimax-btn')?.addEventListener('click', () => {
+      this.saveAPIConfig('minimax');
+    });
+    document.getElementById('save-glm-btn')?.addEventListener('click', () => {
+      this.saveAPIConfig('glm');
+    });
     document.getElementById('check-minimax-btn')?.addEventListener('click', () => {
       this.checkAPI('minimax');
     });
@@ -177,11 +187,96 @@ class DebugConsole {
     }
   }
 
+  // ==================== API Config ====================
+
+  private async loadAPIConfigs(): Promise<void> {
+    const configs = await this.configStorage.getAll();
+
+    // 加载 MiniMax 配置
+    const minimaxBaseUrl = document.getElementById('minimax-base-url') as HTMLInputElement;
+    const minimaxApiKey = document.getElementById('minimax-api-key') as HTMLInputElement;
+    if (minimaxBaseUrl) minimaxBaseUrl.value = configs.minimax.baseUrl;
+    if (minimaxApiKey) minimaxApiKey.value = configs.minimax.apiKey;
+
+    // 加载 GLM 配置
+    const glmBaseUrl = document.getElementById('glm-base-url') as HTMLInputElement;
+    const glmApiKey = document.getElementById('glm-api-key') as HTMLInputElement;
+    if (glmBaseUrl) glmBaseUrl.value = configs.glm.baseUrl;
+    if (glmApiKey) glmApiKey.value = configs.glm.apiKey;
+
+    this.log('配置', '已加载 API 配置');
+  }
+
+  private async saveAPIConfig(provider: 'minimax' | 'glm'): Promise<void> {
+    const baseUrlEl = document.getElementById(`${provider}-base-url`) as HTMLInputElement;
+    const apiKeyEl = document.getElementById(`${provider}-api-key`) as HTMLInputElement;
+    const saveBtn = document.getElementById(`save-${provider}-btn`);
+
+    if (!baseUrlEl || !apiKeyEl) return;
+
+    const config: Partial<APIProviderConfig> = {
+      baseUrl: baseUrlEl.value.trim(),
+      apiKey: apiKeyEl.value.trim(),
+      enabled: true,
+    };
+
+    if (saveBtn) saveBtn.classList.add('loading');
+
+    try {
+      await this.configStorage.save(provider, config);
+      this.log('配置', `${provider.toUpperCase()} 配置已保存`, 'success');
+
+      // 视觉反馈
+      baseUrlEl.classList.remove('error');
+      apiKeyEl.classList.remove('error');
+      baseUrlEl.classList.add('success');
+      apiKeyEl.classList.add('success');
+      setTimeout(() => {
+        baseUrlEl.classList.remove('success');
+        apiKeyEl.classList.remove('success');
+      }, 2000);
+    } catch (error) {
+      this.log('配置', `保存失败: ${error}`, 'error');
+      baseUrlEl.classList.add('error');
+      apiKeyEl.classList.add('error');
+    } finally {
+      if (saveBtn) saveBtn.classList.remove('loading');
+    }
+  }
+
+  private getAPIConfigFromForm(provider: 'minimax' | 'glm'): { apiKey: string; baseUrl: string } | null {
+    const baseUrlEl = document.getElementById(`${provider}-base-url`) as HTMLInputElement;
+    const apiKeyEl = document.getElementById(`${provider}-api-key`) as HTMLInputElement;
+
+    if (!baseUrlEl || !apiKeyEl) return null;
+
+    const baseUrl = baseUrlEl.value.trim();
+    const apiKey = apiKeyEl.value.trim();
+
+    if (!baseUrl || !apiKey) {
+      return null;
+    }
+
+    return { baseUrl, apiKey };
+  }
+
   // ==================== API Check ====================
 
   async checkAPI(provider: 'minimax' | 'glm'): Promise<void> {
     const statusEl = document.getElementById(`${provider}-status`);
     const btn = document.getElementById(`check-${provider}-btn`);
+
+    // 获取当前表单中的配置
+    const formConfig = this.getAPIConfigFromForm(provider);
+
+    if (!formConfig) {
+      if (statusEl) {
+        statusEl.textContent = '未配置';
+        statusEl.className = 'api-indicator error';
+      }
+      this.log('API检查', `${provider.toUpperCase()} 未配置 API Key 或 Base URL`, 'error');
+      return;
+    }
 
     if (statusEl) {
       statusEl.textContent = '...';
@@ -194,6 +289,11 @@ class DebugConsole {
     const response = await this.sendToBackground<APIStatus>({
       type: 'CHECK_API',
       provider,
+      config: {
+        provider,
+        apiKey: formConfig.apiKey,
+        baseUrl: formConfig.baseUrl,
+      },
     });
 
     if (btn) btn.classList.remove('loading');

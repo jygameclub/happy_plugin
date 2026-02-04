@@ -14,25 +14,57 @@
       <span class="header-version">v1.0.0</span>
     </header>
 
-    <!-- Section 1: 环境 -->
+    <!-- Section 1: 环境 / API 配置 -->
     <section class="panel" data-panel="environment">
       <div class="panel-header" data-toggle="environment">
         <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">环境</span>
+        <span class="panel-title">环境 / API 配置</span>
       </div>
       <div class="panel-content" id="environment-content">
-        <div class="api-status-list">
-          <div class="api-status-item">
+        <!-- MiniMax API 配置 -->
+        <div class="api-config-section">
+          <div class="api-config-header">
             <span class="api-name">MiniMax API</span>
             <span class="api-indicator" id="minimax-status">--</span>
-            <button class="btn btn-small" id="check-minimax-btn">检查</button>
           </div>
-          <div class="api-status-item">
-            <span class="api-name">GLM API</span>
-            <span class="api-indicator" id="glm-status">--</span>
-            <button class="btn btn-small" id="check-glm-btn">检查</button>
+          <div class="api-config-form" id="minimax-config-form">
+            <div class="form-group">
+              <label class="label" for="minimax-base-url">Base URL:</label>
+              <input type="text" class="input-text" id="minimax-base-url" placeholder="https://api.minimax.chat">
+            </div>
+            <div class="form-group">
+              <label class="label" for="minimax-api-key">API Key:</label>
+              <input type="password" class="input-text" id="minimax-api-key" placeholder="输入 API Key">
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-small btn-secondary" id="save-minimax-btn">保存</button>
+              <button class="btn btn-small btn-primary" id="check-minimax-btn">检查连接</button>
+            </div>
           </div>
         </div>
+
+        <!-- GLM API 配置 -->
+        <div class="api-config-section">
+          <div class="api-config-header">
+            <span class="api-name">GLM API</span>
+            <span class="api-indicator" id="glm-status">--</span>
+          </div>
+          <div class="api-config-form" id="glm-config-form">
+            <div class="form-group">
+              <label class="label" for="glm-base-url">Base URL:</label>
+              <input type="text" class="input-text" id="glm-base-url" placeholder="https://open.bigmodel.cn">
+            </div>
+            <div class="form-group">
+              <label class="label" for="glm-api-key">API Key:</label>
+              <input type="password" class="input-text" id="glm-api-key" placeholder="输入 API Key">
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-small btn-secondary" id="save-glm-btn">保存</button>
+              <button class="btn btn-small btn-primary" id="check-glm-btn">检查连接</button>
+            </div>
+          </div>
+        </div>
+
         <button class="btn btn-primary btn-full" id="check-all-api-btn">检查所有 API</button>
       </div>
     </section>
