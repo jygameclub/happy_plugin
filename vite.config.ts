@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { copyFileSync, mkdirSync } from 'fs';
+import { copyFileSync, mkdirSync, rmSync, existsSync, renameSync } from 'fs';
 
 export default defineConfig({
   build: {
@@ -31,14 +31,41 @@ export default defineConfig({
     {
       name: 'copy-extension-files',
       closeBundle() {
+        const distDir = resolve(__dirname, 'dist');
+
+        // Move HTML files to dist root
+        const htmlMoves = [
+          { from: 'dist/src/popup/popup.html', to: 'dist/popup.html' },
+          { from: 'dist/src/sidepanel/sidepanel.html', to: 'dist/sidepanel.html' },
+        ];
+        htmlMoves.forEach(({ from, to }) => {
+          const srcPath = resolve(__dirname, from);
+          const destPath = resolve(__dirname, to);
+          if (existsSync(srcPath)) {
+            renameSync(srcPath, destPath);
+          }
+        });
+
+        // Remove the src folder from dist
+        const srcFolder = resolve(distDir, 'src');
+        if (existsSync(srcFolder)) {
+          rmSync(srcFolder, { recursive: true });
+        }
+
         // Copy manifest
-        copyFileSync('src/manifest.json', 'dist/manifest.json');
+        copyFileSync(
+          resolve(__dirname, 'src/manifest.json'),
+          resolve(__dirname, 'dist/manifest.json')
+        );
 
         // Copy icons
-        mkdirSync('dist/icons', { recursive: true });
+        mkdirSync(resolve(__dirname, 'dist/icons'), { recursive: true });
         ['icon16.png', 'icon48.png', 'icon128.png'].forEach((icon) => {
           try {
-            copyFileSync(`public/icons/${icon}`, `dist/icons/${icon}`);
+            copyFileSync(
+              resolve(__dirname, `public/icons/${icon}`),
+              resolve(__dirname, `dist/icons/${icon}`)
+            );
           } catch {
             console.warn(`Icon ${icon} not found, skipping`);
           }
