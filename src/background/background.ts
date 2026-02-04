@@ -1,8 +1,12 @@
 // src/background/background.ts
 
 import { StateManager } from './state-manager';
+import { APIClient, APIConfig } from '../services/api-client';
+import { AIJudge } from '../services/ai-judge';
 
 const state = new StateManager();
+const aiJudge = new AIJudge();
+let apiClient: APIClient | null = null;
 
 // Handle extension icon click - open side panel
 chrome.action.onClicked.addListener((tab) => {
@@ -45,8 +49,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
     }
     case 'CHECK_API': {
-      // Will be implemented in Task 9
-      sendResponse({ success: false, error: 'Not implemented' });
+      const config = message.config as APIConfig;
+      if (!config || !config.apiKey || !config.baseUrl) {
+        sendResponse({ success: false, error: 'Invalid API configuration' });
+        break;
+      }
+      apiClient = new APIClient(config);
+      aiJudge.setClient(apiClient);
+      apiClient.checkConnection().then((result) => {
+        sendResponse({
+          success: result.success,
+          data: result.data,
+          latency: result.latency,
+          error: result.error,
+        });
+      });
+      return true; // Keep channel open for async response
+    }
+    case 'ANALYZE_SESSION': {
+      const { recentText, signals } = message;
+      if (!Array.isArray(recentText)) {
+        sendResponse({ success: false, error: 'Invalid input: recentText must be an array' });
+        break;
+      }
+      const input = aiJudge.formatInput(recentText, signals || {});
+      aiJudge.analyze(input).then((result) => {
+        sendResponse({ success: true, data: result });
+      });
+      return true; // Keep channel open for async response
+    }
+    case 'CHECK_DANGEROUS': {
+      const { command } = message;
+      if (typeof command !== 'string') {
+        sendResponse({ success: false, error: 'Invalid input: command must be a string' });
+        break;
+      }
+      const isDangerous = aiJudge.isDangerousCommand(command);
+      sendResponse({ success: true, data: { isDangerous } });
       break;
     }
     default:
