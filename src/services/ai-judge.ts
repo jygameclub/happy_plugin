@@ -11,7 +11,7 @@ const DANGEROUS_PATTERNS = [
   /dd\s+if=.*of=\/dev/i,
   /format\s+[a-z]:/i,
   />\s*\/dev\/sd[a-z]/i,
-  /:\(\)\s*\{\s*:\|\:&\s*\}\s*;:/,
+  /:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/,
   /chmod\s+-R\s+777\s+\//,
   /wget.*\|\s*bash/i,
   /curl.*\|\s*bash/i,

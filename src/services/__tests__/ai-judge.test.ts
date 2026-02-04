@@ -69,4 +69,13 @@ describe('AIJudge', () => {
       expect(judge.isDangerousCommand(cmd)).toBe(false);
     });
   });
+
+  it('should detect waiting state using rule-based analysis', async () => {
+    const judge = new AIJudge();
+    const input = judge.formatInput(['some output', 'user@host:~$ '], {});
+    const result = await judge.analyze(input);
+
+    expect(result.state).toBe('WAITING_INPUT');
+    expect(result.confidence).toBe(0.6);
+  });
 });
