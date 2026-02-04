@@ -165,6 +165,92 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       return true; // Keep channel open for async response
     }
+    case 'ANALYZE_SCREENSHOT': {
+      const screenshotConfig = message.config as APIConfig;
+      const imageData = message.image as string;
+      const prompt = message.prompt as string;
+
+      if (!screenshotConfig || !screenshotConfig.apiKey || !screenshotConfig.baseUrl) {
+        sendResponse({
+          success: false,
+          error: '未配置 API Key 或 Base URL',
+        });
+        break;
+      }
+
+      if (!imageData) {
+        sendResponse({
+          success: false,
+          error: '没有截图数据',
+        });
+        break;
+      }
+
+      const screenshotClient = new APIClient(screenshotConfig);
+      const startTime = Date.now();
+
+      // DeepSeek Vision API (OpenAI 兼容格式)
+      const visionEndpoint = '/chat/completions';
+      const visionBody = {
+        model: 'deepseek-chat',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: prompt || '请分析这个网页截图的布局和内容',
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: imageData,
+                },
+              },
+            ],
+          },
+        ],
+        max_tokens: 2000,
+        stream: false,
+      };
+
+      screenshotClient.post<{
+        choices?: Array<{ message?: { content?: string } }>;
+        error?: { message?: string };
+      }>(visionEndpoint, visionBody).then((result) => {
+        const latency = Date.now() - startTime;
+
+        const content = result.data?.choices?.[0]?.message?.content;
+
+        if (result.success && content) {
+          sendResponse({
+            success: true,
+            content,
+            latency,
+          });
+        } else {
+          let errorMsg = result.error || 'API 响应格式错误';
+          if (result.data?.error?.message) {
+            errorMsg = result.data.error.message;
+          }
+          if (!content && result.data) {
+            errorMsg += ` (响应: ${JSON.stringify(result.data).substring(0, 200)})`;
+          }
+          sendResponse({
+            success: false,
+            error: errorMsg,
+            latency,
+          });
+        }
+      }).catch((err) => {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : '请求失败',
+        });
+      });
+
+      return true; // Keep channel open for async response
+    }
     default:
       sendResponse({ success: false, error: 'Unknown message type' });
       break;

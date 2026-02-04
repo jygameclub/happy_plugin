@@ -24,6 +24,7 @@ class DebugConsole {
   private pendingAction: PendingAction | null = null;
   private logs: LogEntry[] = [];
   private configStorage: ConfigStorage;
+  private currentScreenshot: string | null = null;
 
   constructor() {
     this.configStorage = new ConfigStorage();
@@ -111,6 +112,54 @@ class DebugConsole {
     document.getElementById('clear-logs-btn')?.addEventListener('click', () => {
       this.clearLogs();
     });
+
+    // Page Debug section
+    document.getElementById('refresh-page-info-btn')?.addEventListener('click', () => {
+      this.refreshPageInfo();
+    });
+    document.getElementById('scan-structure-btn')?.addEventListener('click', () => {
+      this.scanPageStructure();
+    });
+    document.getElementById('scan-sessions-list-btn')?.addEventListener('click', () => {
+      this.scanSessionsList();
+    });
+    document.getElementById('scan-content-btn')?.addEventListener('click', () => {
+      this.scanContentState();
+    });
+    document.getElementById('highlight-element-btn')?.addEventListener('click', () => {
+      this.highlightElement();
+    });
+    document.getElementById('click-element-btn')?.addEventListener('click', () => {
+      this.clickElement();
+    });
+    document.getElementById('get-element-info-btn')?.addEventListener('click', () => {
+      this.getElementInfo();
+    });
+
+    // Screenshot section
+    document.getElementById('capture-screenshot-btn')?.addEventListener('click', () => {
+      this.captureScreenshot();
+    });
+    document.getElementById('analyze-screenshot-btn')?.addEventListener('click', () => {
+      this.analyzeScreenshot();
+    });
+
+    // Happy test section
+    document.getElementById('test-get-sessions-btn')?.addEventListener('click', () => {
+      this.testGetSessions();
+    });
+    document.getElementById('test-input-btn')?.addEventListener('click', () => {
+      this.testInputText();
+    });
+    document.getElementById('test-send-btn')?.addEventListener('click', () => {
+      this.testSimulateSend();
+    });
+    document.getElementById('test-clear-input-btn')?.addEventListener('click', () => {
+      this.testClearInput();
+    });
+    document.getElementById('test-get-chat-btn')?.addEventListener('click', () => {
+      this.testGetChatMessages();
+    });
   }
 
   // ==================== Communication ====================
@@ -122,10 +171,23 @@ class DebugConsole {
         this.log('错误', '未找到活动标签页');
         return null;
       }
+
+      // 尝试注入 content script（如果尚未注入）
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js'],
+        });
+      } catch {
+        // 如果已经注入或者没有权限，忽略错误
+      }
+
       const response = await chrome.tabs.sendMessage(tab.id, message);
       return response as T;
     } catch (error) {
-      this.log('错误', `内容脚本错误: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log('错误', `内容脚本通信失败: ${errorMessage}`);
+      console.error('[Happy Debug] sendToContent error:', error);
       return null;
     }
   }
@@ -725,6 +787,565 @@ class DebugConsole {
       logViewer.innerHTML = '<div class="log-empty">暂无日志。</div>';
     }
     this.log('日志', '日志已清空');
+  }
+
+  // ==================== Page Debug ====================
+
+  private async refreshPageInfo(): Promise<void> {
+    const btn = document.getElementById('refresh-page-info-btn');
+    if (btn) btn.classList.add('loading');
+
+    this.log('页面', '正在获取页面信息...');
+
+    const response = await this.sendToContent<{
+      success: boolean;
+      data: { url: string; title: string; domain: string };
+    }>({ type: 'GET_PAGE_INFO' });
+
+    if (btn) btn.classList.remove('loading');
+
+    console.log('[Happy Debug] refreshPageInfo response:', response);
+
+    if (response?.success && response.data) {
+      const urlEl = document.getElementById('page-url');
+      const titleEl = document.getElementById('page-title');
+
+      if (urlEl) urlEl.textContent = response.data.url.substring(0, 50) + (response.data.url.length > 50 ? '...' : '');
+      if (titleEl) titleEl.textContent = response.data.title.substring(0, 30) + (response.data.title.length > 30 ? '...' : '');
+
+      this.log('页面', `域名: ${response.data.domain}`, 'success');
+    } else {
+      this.log('页面', `获取页面信息失败 (response: ${JSON.stringify(response)})`, 'error');
+    }
+  }
+
+  private async scanPageStructure(): Promise<void> {
+    const btn = document.getElementById('scan-structure-btn');
+    if (btn) btn.classList.add('loading');
+
+    this.log('页面', '正在扫描页面结构...');
+
+    const response = await this.sendToContent<{
+      success: boolean;
+      data: {
+        sidebar: { exists: boolean; selector: string | null; width: number; items: number };
+        mainContent: { exists: boolean; selector: string | null; width: number; type: string };
+        rightPanel: { exists: boolean; selector: string | null; width: number };
+      };
+    }>({ type: 'ANALYZE_PAGE_STRUCTURE' });
+
+    if (btn) btn.classList.remove('loading');
+
+    const structureEl = document.getElementById('page-structure');
+    if (!structureEl) return;
+
+    if (response?.success && response.data) {
+      const { sidebar, mainContent, rightPanel } = response.data;
+      structureEl.innerHTML = `
+        <div class="debug-structure-item">
+          <span class="debug-structure-label">左侧边栏:</span>
+          <span class="debug-structure-value ${sidebar.exists ? 'found' : 'not-found'}">
+            ${sidebar.exists ? `找到 (${sidebar.width}px, ${sidebar.items} 项)` : '未找到'}
+          </span>
+        </div>
+        <div class="debug-structure-item">
+          <span class="debug-structure-label">主内容区:</span>
+          <span class="debug-structure-value ${mainContent.exists ? 'found' : 'not-found'}">
+            ${mainContent.exists ? `找到 (${mainContent.width}px, ${mainContent.type})` : '未找到'}
+          </span>
+        </div>
+        <div class="debug-structure-item">
+          <span class="debug-structure-label">右侧面板:</span>
+          <span class="debug-structure-value ${rightPanel.exists ? 'found' : 'not-found'}">
+            ${rightPanel.exists ? `找到 (${rightPanel.width}px)` : '未找到'}
+          </span>
+        </div>
+      `;
+      this.log('页面', '页面结构扫描完成', 'success');
+    } else {
+      structureEl.innerHTML = '<div class="debug-empty">扫描失败</div>';
+      this.log('页面', '扫描页面结构失败', 'error');
+    }
+  }
+
+  private async scanSessionsList(): Promise<void> {
+    const btn = document.getElementById('scan-sessions-list-btn');
+    if (btn) btn.classList.add('loading');
+
+    this.log('页面', '正在获取会话列表...');
+
+    const response = await this.sendToContent<{
+      success: boolean;
+      data: Array<{ id: string; title: string; active: boolean; selector: string }>;
+    }>({ type: 'GET_SESSIONS_LIST' });
+
+    if (btn) btn.classList.remove('loading');
+
+    const listEl = document.getElementById('sessions-list');
+    if (!listEl) return;
+
+    if (response?.success && response.data && response.data.length > 0) {
+      listEl.innerHTML = response.data.map((item) => `
+        <div class="debug-list-item ${item.active ? 'active' : ''}">
+          <span class="debug-list-title">${this.escapeHtml(item.title)}</span>
+          <span class="debug-list-badge">${item.active ? '活动' : ''}</span>
+        </div>
+      `).join('');
+      this.log('页面', `找到 ${response.data.length} 个会话`, 'success');
+    } else {
+      listEl.innerHTML = '<div class="debug-empty">未找到会话列表</div>';
+      this.log('页面', '未找到会话列表', 'error');
+    }
+  }
+
+  private async scanContentState(): Promise<void> {
+    const btn = document.getElementById('scan-content-btn');
+    if (btn) btn.classList.add('loading');
+
+    this.log('页面', '正在检测内容区状态...');
+
+    const response = await this.sendToContent<{
+      success: boolean;
+      data: {
+        type: string;
+        status: string;
+        hasInput: boolean;
+        hasMessages: boolean;
+      };
+    }>({ type: 'GET_CONTENT_STATE' });
+
+    if (btn) btn.classList.remove('loading');
+
+    if (response?.success && response.data) {
+      const typeEl = document.getElementById('content-type');
+      const statusEl = document.getElementById('content-status');
+
+      const typeMap: Record<string, string> = {
+        chat: '聊天',
+        code: '代码',
+        settings: '设置',
+        empty: '空',
+        unknown: '未知',
+      };
+
+      const statusMap: Record<string, string> = {
+        idle: '空闲',
+        loading: '加载中',
+        streaming: '流式输出',
+        error: '错误',
+        empty: '空',
+        unknown: '未知',
+      };
+
+      if (typeEl) typeEl.textContent = typeMap[response.data.type] || response.data.type;
+      if (statusEl) statusEl.textContent = statusMap[response.data.status] || response.data.status;
+
+      this.log('页面', `内容类型: ${typeMap[response.data.type]}, 状态: ${statusMap[response.data.status]}`, 'success');
+    } else {
+      this.log('页面', '检测内容区状态失败', 'error');
+    }
+  }
+
+  private async highlightElement(): Promise<void> {
+    const selectorEl = document.getElementById('element-selector') as HTMLInputElement;
+    const selector = selectorEl?.value.trim();
+
+    if (!selector) {
+      this.log('元素', '请输入 CSS 选择器', 'error');
+      return;
+    }
+
+    this.log('元素', `高亮元素: ${selector}`);
+
+    const response = await this.sendToContent<{ success: boolean }>({
+      type: 'HIGHLIGHT_ELEMENT',
+      selector,
+      duration: 2000,
+    });
+
+    if (response?.success) {
+      this.log('元素', '元素已高亮', 'success');
+    } else {
+      this.log('元素', '未找到元素', 'error');
+    }
+  }
+
+  private async clickElement(): Promise<void> {
+    const selectorEl = document.getElementById('element-selector') as HTMLInputElement;
+    const selector = selectorEl?.value.trim();
+
+    if (!selector) {
+      this.log('元素', '请输入 CSS 选择器', 'error');
+      return;
+    }
+
+    this.log('元素', `点击元素: ${selector}`);
+
+    const response = await this.sendToContent<{ success: boolean }>({
+      type: 'CLICK_ELEMENT',
+      selector,
+    });
+
+    if (response?.success) {
+      this.log('元素', '元素已点击', 'success');
+    } else {
+      this.log('元素', '点击失败', 'error');
+    }
+  }
+
+  private async getElementInfo(): Promise<void> {
+    const selectorEl = document.getElementById('element-selector') as HTMLInputElement;
+    const selector = selectorEl?.value.trim();
+
+    if (!selector) {
+      this.log('元素', '请输入 CSS 选择器', 'error');
+      return;
+    }
+
+    this.log('元素', `获取元素信息: ${selector}`);
+
+    const response = await this.sendToContent<{
+      success: boolean;
+      data: {
+        exists: boolean;
+        tagName: string;
+        id: string;
+        className: string;
+        text: string;
+        rect: { x: number; y: number; width: number; height: number };
+        visible: boolean;
+        clickable: boolean;
+      };
+    }>({
+      type: 'GET_ELEMENT_INFO',
+      selector,
+    });
+
+    const resultEl = document.getElementById('element-result');
+    if (!resultEl) return;
+
+    if (response?.success && response.data?.exists) {
+      const info = response.data;
+      resultEl.innerHTML = `
+        <div class="debug-info-grid">
+          <div class="debug-info-item">
+            <span class="debug-info-label">标签:</span>
+            <span class="debug-info-value">${info.tagName}</span>
+          </div>
+          <div class="debug-info-item">
+            <span class="debug-info-label">位置:</span>
+            <span class="debug-info-value">(${info.rect.x}, ${info.rect.y})</span>
+          </div>
+          <div class="debug-info-item">
+            <span class="debug-info-label">大小:</span>
+            <span class="debug-info-value">${info.rect.width} x ${info.rect.height}</span>
+          </div>
+          <div class="debug-info-item">
+            <span class="debug-info-label">可见:</span>
+            <span class="debug-info-value">${info.visible ? '是' : '否'}</span>
+          </div>
+          <div class="debug-info-item">
+            <span class="debug-info-label">可点击:</span>
+            <span class="debug-info-value">${info.clickable ? '是' : '否'}</span>
+          </div>
+          <div class="debug-info-item">
+            <span class="debug-info-label">文本:</span>
+            <span class="debug-info-value">${this.escapeHtml(info.text.substring(0, 50))}</span>
+          </div>
+        </div>
+      `;
+      this.log('元素', `找到元素: ${info.tagName}`, 'success');
+    } else {
+      resultEl.innerHTML = '<div class="debug-empty">未找到元素</div>';
+      this.log('元素', '未找到元素', 'error');
+    }
+  }
+
+  // ==================== Screenshot ====================
+
+  private async captureScreenshot(): Promise<void> {
+    const btn = document.getElementById('capture-screenshot-btn');
+    const previewEl = document.getElementById('screenshot-preview');
+    const analyzeBtn = document.getElementById('analyze-screenshot-btn') as HTMLButtonElement;
+
+    if (btn) btn.classList.add('loading');
+    this.log('截图', '正在捕获页面截图...');
+
+    try {
+      // 获取当前活动标签页
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        this.log('截图', '未找到活动标签页', 'error');
+        return;
+      }
+
+      // 使用 chrome.tabs.captureVisibleTab 捕获截图
+      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+        format: 'png',
+        quality: 90,
+      });
+
+      this.currentScreenshot = dataUrl;
+
+      // 显示截图预览
+      if (previewEl) {
+        previewEl.innerHTML = `<img src="${dataUrl}" alt="页面截图" />`;
+      }
+
+      // 启用分析按钮
+      if (analyzeBtn) {
+        analyzeBtn.disabled = false;
+      }
+
+      this.log('截图', '截图捕获成功', 'success');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log('截图', `截图失败: ${errorMessage}`, 'error');
+
+      if (previewEl) {
+        previewEl.innerHTML = `<div class="debug-empty">截图失败: ${errorMessage}</div>`;
+      }
+    } finally {
+      if (btn) btn.classList.remove('loading');
+    }
+  }
+
+  private async analyzeScreenshot(): Promise<void> {
+    if (!this.currentScreenshot) {
+      this.log('截图', '请先截图', 'error');
+      return;
+    }
+
+    const formConfig = this.getAPIConfigFromForm('deepseek');
+    if (!formConfig) {
+      this.log('截图', '请先配置 DeepSeek API', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('analyze-screenshot-btn');
+    const resultEl = document.getElementById('screenshot-analysis-result');
+    const promptEl = document.getElementById('screenshot-prompt') as HTMLTextAreaElement;
+    const prompt = promptEl?.value.trim() || '请分析这个网页截图的布局和内容';
+
+    if (btn) btn.classList.add('loading');
+    this.log('截图', '正在发送给 AI 分析...');
+
+    try {
+      const response = await this.sendToBackground<{
+        success: boolean;
+        content?: string;
+        error?: string;
+        latency?: number;
+      }>({
+        type: 'ANALYZE_SCREENSHOT',
+        image: this.currentScreenshot,
+        prompt,
+        config: {
+          provider: 'deepseek',
+          apiKey: formConfig.apiKey,
+          baseUrl: formConfig.baseUrl,
+        },
+      });
+
+      if (response?.success && response.content) {
+        if (resultEl) {
+          resultEl.innerHTML = `<div class="ai-analysis-text">${this.escapeHtml(response.content)}</div>`;
+        }
+        this.log('截图', `AI 分析完成 (${response.latency}ms)`, 'success');
+      } else {
+        if (resultEl) {
+          resultEl.innerHTML = `<div class="ai-result-empty">分析失败: ${response?.error || '未知错误'}</div>`;
+        }
+        this.log('截图', `分析失败: ${response?.error || '未知错误'}`, 'error');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log('截图', `分析出错: ${errorMessage}`, 'error');
+
+      if (resultEl) {
+        resultEl.innerHTML = `<div class="ai-result-empty">分析出错: ${errorMessage}</div>`;
+      }
+    } finally {
+      if (btn) btn.classList.remove('loading');
+    }
+  }
+
+  // ==================== Happy Test ====================
+
+  private async testGetSessions(): Promise<void> {
+    const btn = document.getElementById('test-get-sessions-btn');
+    const countEl = document.getElementById('test-session-count');
+    const listEl = document.getElementById('test-sessions-list');
+
+    if (btn) btn.classList.add('loading');
+    this.log('测试', '正在获取会话列表...');
+
+    const response = await this.sendToContent<{
+      success: boolean;
+      data: Array<{ id: string; title: string; active: boolean; selector: string }>;
+    }>({ type: 'GET_SESSIONS_LIST' });
+
+    if (btn) btn.classList.remove('loading');
+
+    if (response?.success && response.data) {
+      const sessions = response.data;
+      if (countEl) countEl.textContent = String(sessions.length);
+
+      if (listEl) {
+        if (sessions.length === 0) {
+          listEl.innerHTML = '<div class="debug-empty">未找到会话</div>';
+        } else {
+          listEl.innerHTML = sessions.map((session, index) => `
+            <div class="debug-list-item" style="padding: 8px; border-bottom: 1px solid #3c3c3c; cursor: pointer;"
+                 data-selector="${this.escapeHtml(session.selector)}" data-index="${index}">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: ${session.active ? '#4caf50' : '#cccccc'};">
+                  ${session.active ? '● ' : ''}${index + 1}. ${this.escapeHtml(session.title)}
+                </span>
+                <button class="btn btn-small btn-secondary test-click-session-btn" data-selector="${this.escapeHtml(session.selector)}">点击</button>
+              </div>
+            </div>
+          `).join('');
+
+          // 添加点击事件
+          listEl.querySelectorAll('.test-click-session-btn').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const selector = (btn as HTMLElement).dataset.selector;
+              if (selector) this.testClickSession(selector);
+            });
+          });
+        }
+      }
+
+      this.log('测试', `找到 ${sessions.length} 个会话`, 'success');
+    } else {
+      if (countEl) countEl.textContent = '错误';
+      if (listEl) listEl.innerHTML = '<div class="debug-empty">获取失败</div>';
+      this.log('测试', '获取会话列表失败', 'error');
+    }
+  }
+
+  private async testClickSession(selector: string): Promise<void> {
+    this.log('测试', `正在点击会话: ${selector}`);
+
+    const response = await this.sendToContent<{ success: boolean }>({
+      type: 'CLICK_ELEMENT',
+      selector,
+    });
+
+    if (response?.success) {
+      this.log('测试', '点击成功', 'success');
+      // 延迟后刷新会话列表
+      setTimeout(() => this.testGetSessions(), 500);
+    } else {
+      this.log('测试', '点击失败', 'error');
+    }
+  }
+
+  private async testInputText(): Promise<void> {
+    const inputEl = document.getElementById('test-input-text') as HTMLInputElement;
+    const resultEl = document.getElementById('test-input-result');
+    const text = inputEl?.value || '';
+
+    if (!text) {
+      this.log('测试', '请输入测试文字', 'error');
+      return;
+    }
+
+    this.log('测试', `正在输入: ${text.substring(0, 20)}...`);
+
+    const response = await this.sendToContent<{ success: boolean }>({
+      type: 'INPUT_TEXT',
+      selector: 'happy-input',
+      text,
+    });
+
+    if (response?.success) {
+      if (resultEl) resultEl.innerHTML = `<div style="color: #4caf50;">✓ 输入成功: "${this.escapeHtml(text)}"</div>`;
+      this.log('测试', '输入成功', 'success');
+    } else {
+      if (resultEl) resultEl.innerHTML = '<div style="color: #f44336;">✗ 输入失败</div>';
+      this.log('测试', '输入失败', 'error');
+    }
+  }
+
+  private async testSimulateSend(): Promise<void> {
+    const resultEl = document.getElementById('test-input-result');
+    this.log('测试', '正在模拟发送...');
+
+    const response = await this.sendToContent<{ success: boolean }>({
+      type: 'SIMULATE_SEND',
+    });
+
+    if (response?.success) {
+      if (resultEl) resultEl.innerHTML = '<div style="color: #4caf50;">✓ 发送指令已执行</div>';
+      this.log('测试', '发送指令已执行', 'success');
+    } else {
+      if (resultEl) resultEl.innerHTML = '<div style="color: #f44336;">✗ 发送失败</div>';
+      this.log('测试', '发送失败', 'error');
+    }
+  }
+
+  private async testClearInput(): Promise<void> {
+    const resultEl = document.getElementById('test-input-result');
+    this.log('测试', '正在清空输入框...');
+
+    const response = await this.sendToContent<{ success: boolean }>({
+      type: 'CLEAR_INPUT',
+    });
+
+    if (response?.success) {
+      if (resultEl) resultEl.innerHTML = '<div style="color: #4caf50;">✓ 输入框已清空</div>';
+      this.log('测试', '输入框已清空', 'success');
+    } else {
+      if (resultEl) resultEl.innerHTML = '<div style="color: #f44336;">✗ 清空失败</div>';
+      this.log('测试', '清空失败', 'error');
+    }
+  }
+
+  private async testGetChatMessages(): Promise<void> {
+    const btn = document.getElementById('test-get-chat-btn');
+    const countEl = document.getElementById('test-message-count');
+    const contentEl = document.getElementById('test-chat-content');
+
+    if (btn) btn.classList.add('loading');
+    this.log('测试', '正在读取聊天内容...');
+
+    const response = await this.sendToContent<{
+      success: boolean;
+      data: Array<{ role: string; content: string; index: number }>;
+    }>({ type: 'GET_CHAT_MESSAGES' });
+
+    if (btn) btn.classList.remove('loading');
+
+    if (response?.success && response.data) {
+      const messages = response.data;
+      if (countEl) countEl.textContent = String(messages.length);
+
+      if (contentEl) {
+        if (messages.length === 0) {
+          contentEl.innerHTML = '<div class="debug-empty">未找到聊天消息</div>';
+        } else {
+          contentEl.innerHTML = messages.map((msg) => `
+            <div class="debug-list-item" style="padding: 8px; border-bottom: 1px solid #3c3c3c; margin-bottom: 4px;">
+              <div style="font-size: 10px; color: ${msg.role === 'user' ? '#2196f3' : msg.role === 'assistant' ? '#4caf50' : '#999'}; margin-bottom: 4px;">
+                ${msg.role === 'user' ? '👤 用户' : msg.role === 'assistant' ? '🤖 助手' : '❓ 未知'} #${msg.index + 1}
+              </div>
+              <div style="font-size: 12px; color: #ccc; word-break: break-word;">
+                ${this.escapeHtml(msg.content.substring(0, 200))}${msg.content.length > 200 ? '...' : ''}
+              </div>
+            </div>
+          `).join('');
+        }
+      }
+
+      this.log('测试', `找到 ${messages.length} 条消息`, 'success');
+    } else {
+      if (countEl) countEl.textContent = '错误';
+      if (contentEl) contentEl.innerHTML = '<div class="debug-empty">读取失败</div>';
+      this.log('测试', '读取聊天内容失败', 'error');
+    }
   }
 
   // ==================== Utilities ====================

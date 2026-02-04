@@ -36,7 +36,192 @@
       </div>
     </section>
 
-    <!-- Section 1: 环境 / API 配置 -->
+    <!-- Section 1: 截图分析 -->
+    <section class="panel collapsed" data-panel="screenshot">
+      <div class="panel-header" data-toggle="screenshot">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">截图分析</span>
+      </div>
+      <div class="panel-content" id="screenshot-content">
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">页面截图</span>
+            <button class="btn btn-small btn-primary" id="capture-screenshot-btn">截图</button>
+          </div>
+          <div class="screenshot-preview" id="screenshot-preview">
+            <div class="debug-empty">点击"截图"捕获当前页面</div>
+          </div>
+        </div>
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">AI 分析</span>
+          </div>
+          <div class="form-group">
+            <label class="label">分析提示词:</label>
+            <textarea class="input-textarea" id="screenshot-prompt" rows="3" placeholder="请分析这个页面的布局结构，识别左侧边栏、主内容区、会话列表等元素...">请分析这个网页截图，识别以下内容：
+1. 页面整体布局结构
+2. 左侧是否有会话列表/侧边栏
+3. 中间主内容区显示的是什么
+4. 是否有输入框、按钮等交互元素
+5. 当前页面的状态（加载中/空闲/错误等）</textarea>
+          </div>
+          <button class="btn btn-primary btn-full" id="analyze-screenshot-btn" disabled>发送截图给 AI 分析</button>
+          <div class="ai-result" id="screenshot-analysis-result">
+            <div class="ai-result-empty">截图后点击"发送截图给 AI 分析"</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: 网页调试 -->
+    <section class="panel collapsed" data-panel="page-debug">
+      <div class="panel-header" data-toggle="page-debug">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">网页调试</span>
+      </div>
+      <div class="panel-content" id="page-debug-content">
+        <!-- 页面信息 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">页面信息</span>
+            <button class="btn btn-small btn-primary" id="refresh-page-info-btn">刷新</button>
+          </div>
+          <div class="debug-info-grid" id="page-info">
+            <div class="debug-info-item">
+              <span class="debug-info-label">URL:</span>
+              <span class="debug-info-value" id="page-url">--</span>
+            </div>
+            <div class="debug-info-item">
+              <span class="debug-info-label">标题:</span>
+              <span class="debug-info-value" id="page-title">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 页面结构 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">页面结构</span>
+            <button class="btn btn-small btn-primary" id="scan-structure-btn">扫描</button>
+          </div>
+          <div class="debug-structure" id="page-structure">
+            <div class="debug-empty">点击"扫描"分析页面结构</div>
+          </div>
+        </div>
+
+        <!-- 左侧会话列表 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">会话列表</span>
+            <button class="btn btn-small btn-primary" id="scan-sessions-list-btn">获取</button>
+          </div>
+          <div class="debug-list" id="sessions-list">
+            <div class="debug-empty">点击"获取"抓取会话列表</div>
+          </div>
+        </div>
+
+        <!-- 内容区状态 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">内容区状态</span>
+            <button class="btn btn-small btn-primary" id="scan-content-btn">检测</button>
+          </div>
+          <div class="debug-info-grid" id="content-state">
+            <div class="debug-info-item">
+              <span class="debug-info-label">类型:</span>
+              <span class="debug-info-value" id="content-type">--</span>
+            </div>
+            <div class="debug-info-item">
+              <span class="debug-info-label">状态:</span>
+              <span class="debug-info-value" id="content-status">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 元素交互测试 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">元素交互</span>
+          </div>
+          <div class="form-group">
+            <label class="label">CSS 选择器:</label>
+            <input type="text" class="input-text" id="element-selector" placeholder="输入 CSS 选择器...">
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-small btn-secondary" id="highlight-element-btn">高亮</button>
+            <button class="btn btn-small btn-secondary" id="click-element-btn">点击</button>
+            <button class="btn btn-small btn-secondary" id="get-element-info-btn">信息</button>
+          </div>
+          <div class="debug-result" id="element-result">
+            <div class="debug-empty">选择元素后查看结果</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section: Happy 测试 -->
+    <section class="panel" data-panel="happy-test">
+      <div class="panel-header" data-toggle="happy-test">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">Happy 测试</span>
+      </div>
+      <div class="panel-content" id="happy-test-content">
+        <!-- 会话列表测试 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">会话列表测试</span>
+            <button class="btn btn-small btn-primary" id="test-get-sessions-btn">获取列表</button>
+          </div>
+          <div class="debug-info-grid">
+            <div class="debug-info-item">
+              <span class="debug-info-label">会话数量:</span>
+              <span class="debug-info-value" id="test-session-count">--</span>
+            </div>
+          </div>
+          <div class="debug-list" id="test-sessions-list" style="max-height: 200px; overflow-y: auto;">
+            <div class="debug-empty">点击"获取列表"读取左侧会话</div>
+          </div>
+        </div>
+
+        <!-- 输入框测试 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">输入框测试</span>
+          </div>
+          <div class="form-group">
+            <label class="label">测试文字:</label>
+            <input type="text" class="input-text" id="test-input-text" placeholder="输入要发送的测试文字..." value="这是一条测试消息">
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-small btn-primary" id="test-input-btn">输入文字</button>
+            <button class="btn btn-small btn-secondary" id="test-send-btn">模拟发送</button>
+            <button class="btn btn-small btn-warning" id="test-clear-input-btn">清空输入框</button>
+          </div>
+          <div class="debug-result" id="test-input-result">
+            <div class="debug-empty">测试输入框交互</div>
+          </div>
+        </div>
+
+        <!-- 聊天内容读取 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">聊天内容读取</span>
+            <button class="btn btn-small btn-primary" id="test-get-chat-btn">读取内容</button>
+          </div>
+          <div class="debug-info-grid">
+            <div class="debug-info-item">
+              <span class="debug-info-label">消息数量:</span>
+              <span class="debug-info-value" id="test-message-count">--</span>
+            </div>
+          </div>
+          <div class="debug-list" id="test-chat-content" style="max-height: 300px; overflow-y: auto;">
+            <div class="debug-empty">点击"读取内容"获取当前聊天记录</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: 环境 / API 配置 -->
     <section class="panel collapsed" data-panel="environment">
       <div class="panel-header" data-toggle="environment">
         <span class="panel-icon">&#9662;</span>
