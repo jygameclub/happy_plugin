@@ -2,10 +2,12 @@
 
 import { SessionScanner } from './session-scanner';
 import { InputInjector } from './input-injector';
+import { OutputListener } from './output-listener';
 import type { Message } from '../types';
 
 const scanner = new SessionScanner();
 const injector = new InputInjector();
+const listener = new OutputListener();
 
 // Listen for messages from background/popup
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
@@ -30,8 +32,12 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       sendResponse(result);
       break;
     }
+    case 'GET_SESSION_OUTPUT': {
+      const output = listener.getRecentOutput(message.sessionId, message.lines);
+      sendResponse({ type: 'SESSION_OUTPUT_RESULT', sessionId: message.sessionId, output });
+      break;
+    }
     default:
-      // Other message types will be handled in future tasks
       break;
   }
   return true; // Keep channel open for async response
