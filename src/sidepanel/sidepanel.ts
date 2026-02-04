@@ -52,21 +52,30 @@ class DebugConsole {
 
   private initEventListeners(): void {
     // Environment / API Config section
-    document.getElementById('save-minimax-btn')?.addEventListener('click', () => {
-      this.saveAPIConfig('minimax');
+    document.getElementById('save-deepseek-btn')?.addEventListener('click', () => {
+      this.saveAPIConfig('deepseek');
     });
-    document.getElementById('save-glm-btn')?.addEventListener('click', () => {
-      this.saveAPIConfig('glm');
+    document.getElementById('check-deepseek-btn')?.addEventListener('click', () => {
+      this.checkAPI('deepseek');
     });
-    document.getElementById('check-minimax-btn')?.addEventListener('click', () => {
-      this.checkAPI('minimax');
+
+    // Auto-save on blur for API config inputs
+    const baseUrlEl = document.getElementById('deepseek-base-url');
+    const apiKeyEl = document.getElementById('deepseek-api-key');
+    baseUrlEl?.addEventListener('blur', () => this.saveAPIConfig('deepseek'));
+    apiKeyEl?.addEventListener('blur', () => this.saveAPIConfig('deepseek'));
+
+    // API Test Chat section
+    document.getElementById('chat-send-btn')?.addEventListener('click', () => {
+      this.sendChatMessage();
     });
-    document.getElementById('check-glm-btn')?.addEventListener('click', () => {
-      this.checkAPI('glm');
+    document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.sendChatMessage();
+      }
     });
-    document.getElementById('check-all-api-btn')?.addEventListener('click', () => {
-      this.checkAPI('minimax');
-      this.checkAPI('glm');
+    document.getElementById('chat-clear-btn')?.addEventListener('click', () => {
+      this.clearChatMessages();
     });
 
     // Session section
@@ -192,22 +201,16 @@ class DebugConsole {
   private async loadAPIConfigs(): Promise<void> {
     const configs = await this.configStorage.getAll();
 
-    // 加载 MiniMax 配置
-    const minimaxBaseUrl = document.getElementById('minimax-base-url') as HTMLInputElement;
-    const minimaxApiKey = document.getElementById('minimax-api-key') as HTMLInputElement;
-    if (minimaxBaseUrl) minimaxBaseUrl.value = configs.minimax.baseUrl;
-    if (minimaxApiKey) minimaxApiKey.value = configs.minimax.apiKey;
-
-    // 加载 GLM 配置
-    const glmBaseUrl = document.getElementById('glm-base-url') as HTMLInputElement;
-    const glmApiKey = document.getElementById('glm-api-key') as HTMLInputElement;
-    if (glmBaseUrl) glmBaseUrl.value = configs.glm.baseUrl;
-    if (glmApiKey) glmApiKey.value = configs.glm.apiKey;
+    // 加载 DeepSeek 配置
+    const deepseekBaseUrl = document.getElementById('deepseek-base-url') as HTMLInputElement;
+    const deepseekApiKey = document.getElementById('deepseek-api-key') as HTMLInputElement;
+    if (deepseekBaseUrl) deepseekBaseUrl.value = configs.deepseek.baseUrl;
+    if (deepseekApiKey) deepseekApiKey.value = configs.deepseek.apiKey;
 
     this.log('配置', '已加载 API 配置');
   }
 
-  private async saveAPIConfig(provider: 'minimax' | 'glm'): Promise<void> {
+  private async saveAPIConfig(provider: 'deepseek'): Promise<void> {
     const baseUrlEl = document.getElementById(`${provider}-base-url`) as HTMLInputElement;
     const apiKeyEl = document.getElementById(`${provider}-api-key`) as HTMLInputElement;
     const saveBtn = document.getElementById(`save-${provider}-btn`);
@@ -244,7 +247,7 @@ class DebugConsole {
     }
   }
 
-  private getAPIConfigFromForm(provider: 'minimax' | 'glm'): { apiKey: string; baseUrl: string } | null {
+  private getAPIConfigFromForm(provider: 'deepseek'): { apiKey: string; baseUrl: string } | null {
     const baseUrlEl = document.getElementById(`${provider}-base-url`) as HTMLInputElement;
     const apiKeyEl = document.getElementById(`${provider}-api-key`) as HTMLInputElement;
 
@@ -262,7 +265,7 @@ class DebugConsole {
 
   // ==================== API Check ====================
 
-  async checkAPI(provider: 'minimax' | 'glm'): Promise<void> {
+  async checkAPI(provider: 'deepseek'): Promise<void> {
     const statusEl = document.getElementById(`${provider}-status`);
     const btn = document.getElementById(`check-${provider}-btn`);
 
@@ -311,6 +314,90 @@ class DebugConsole {
       }
       this.log('API检查', `${provider.toUpperCase()} 失败: ${response?.error || '未知错误'}`, 'error');
     }
+  }
+
+  // ==================== API Test Chat ====================
+
+  private async sendChatMessage(): Promise<void> {
+    const inputEl = document.getElementById('chat-input') as HTMLInputElement;
+    const sendBtn = document.getElementById('chat-send-btn');
+
+    if (!inputEl) return;
+
+    const message = inputEl.value.trim();
+    if (!message) return;
+
+    const formConfig = this.getAPIConfigFromForm('deepseek');
+
+    if (!formConfig) {
+      this.addChatMessage('请先配置 DeepSeek 的 API Key 和 Base URL', 'error');
+      this.log('聊天', 'DeepSeek 未配置', 'error');
+      return;
+    }
+
+    // 显示用户消息
+    this.addChatMessage(message, 'user');
+    inputEl.value = '';
+
+    if (sendBtn) sendBtn.classList.add('loading');
+    this.log('聊天', `发送到 DeepSeek: ${message.substring(0, 30)}...`);
+
+    const response = await this.sendToBackground<{
+      success: boolean;
+      content?: string;
+      error?: string;
+      latency?: number;
+    }>({
+      type: 'CHAT_TEST',
+      provider: 'deepseek',
+      message,
+      config: {
+        provider: 'deepseek',
+        apiKey: formConfig.apiKey,
+        baseUrl: formConfig.baseUrl,
+      },
+    });
+
+    if (sendBtn) sendBtn.classList.remove('loading');
+
+    if (response?.success && response.content) {
+      this.addChatMessage(response.content, 'assistant', response.latency);
+      this.log('聊天', `DeepSeek 响应成功 (${response.latency}ms)`, 'success');
+    } else {
+      this.addChatMessage(response?.error || '请求失败', 'error');
+      this.log('聊天', `DeepSeek 失败: ${response?.error || '未知错误'}`, 'error');
+    }
+  }
+
+  private addChatMessage(content: string, type: 'user' | 'assistant' | 'error', latency?: number): void {
+    const messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+
+    // 移除空状态
+    const emptyState = messagesEl.querySelector('.chat-empty');
+    if (emptyState) {
+      emptyState.remove();
+    }
+
+    const messageEl = document.createElement('div');
+    messageEl.className = `chat-message ${type}`;
+
+    let html = `<div class="chat-content">${this.escapeHtml(content)}</div>`;
+    if (type === 'assistant' && latency !== undefined) {
+      html += `<div class="chat-meta">${latency}ms</div>`;
+    }
+
+    messageEl.innerHTML = html;
+    messagesEl.appendChild(messageEl);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  private clearChatMessages(): void {
+    const messagesEl = document.getElementById('chat-messages');
+    if (messagesEl) {
+      messagesEl.innerHTML = '<div class="chat-empty">发送消息测试 API 是否正常工作</div>';
+    }
+    this.log('聊天', '聊天记录已清空');
   }
 
   // ==================== Session Management ====================

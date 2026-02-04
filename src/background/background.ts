@@ -50,7 +50,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     case 'CHECK_API': {
       const config = message.config as APIConfig;
-      const provider = message.provider as 'minimax' | 'glm';
+      const provider = message.provider as 'deepseek';
       if (!config || !config.apiKey || !config.baseUrl) {
         sendResponse({
           provider,
@@ -93,6 +93,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const isDangerous = aiJudge.isDangerousCommand(command);
       sendResponse({ success: true, data: { isDangerous } });
       break;
+    }
+    case 'CHAT_TEST': {
+      const chatConfig = message.config as APIConfig;
+      const chatMessage = message.message as string;
+
+      if (!chatConfig || !chatConfig.apiKey || !chatConfig.baseUrl) {
+        sendResponse({
+          success: false,
+          error: '未配置 API Key 或 Base URL',
+        });
+        break;
+      }
+
+      if (!chatMessage) {
+        sendResponse({
+          success: false,
+          error: '消息不能为空',
+        });
+        break;
+      }
+
+      const chatClient = new APIClient(chatConfig);
+      const start = Date.now();
+
+      // DeepSeek API (OpenAI 兼容格式)
+      const endpoint = '/chat/completions';
+      const body = {
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: 'You are a helpful assistant.' },
+          { role: 'user', content: chatMessage },
+        ],
+        stream: false,
+      };
+
+      chatClient.post<{
+        choices?: Array<{ message?: { content?: string } }>;
+        error?: { message?: string };
+      }>(endpoint, body).then((result) => {
+        const latency = Date.now() - start;
+
+        const content = result.data?.choices?.[0]?.message?.content;
+
+        if (result.success && content) {
+          sendResponse({
+            success: true,
+            content,
+            latency,
+          });
+        } else {
+          let errorMsg = result.error || 'API 响应格式错误';
+          if (result.data?.error?.message) {
+            errorMsg = result.data.error.message;
+          }
+          if (!content && result.data) {
+            errorMsg += ` (响应: ${JSON.stringify(result.data).substring(0, 200)})`;
+          }
+          sendResponse({
+            success: false,
+            error: errorMsg,
+            latency,
+          });
+        }
+      }).catch((err) => {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : '请求失败',
+        });
+      });
+
+      return true; // Keep channel open for async response
     }
     default:
       sendResponse({ success: false, error: 'Unknown message type' });

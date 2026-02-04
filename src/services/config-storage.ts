@@ -7,19 +7,13 @@ export interface APIProviderConfig {
 }
 
 export interface AllAPIConfigs {
-  minimax: APIProviderConfig;
-  glm: APIProviderConfig;
+  deepseek: APIProviderConfig;
 }
 
 const DEFAULT_CONFIGS: AllAPIConfigs = {
-  minimax: {
+  deepseek: {
     apiKey: '',
-    baseUrl: 'https://api.minimax.chat',
-    enabled: false,
-  },
-  glm: {
-    apiKey: '',
-    baseUrl: 'https://open.bigmodel.cn',
+    baseUrl: 'https://api.deepseek.com',
     enabled: false,
   },
 };
@@ -35,8 +29,7 @@ export class ConfigStorage {
       const result = await chrome.storage.local.get(STORAGE_KEY);
       const stored = result[STORAGE_KEY] as Partial<AllAPIConfigs> | undefined;
       return {
-        minimax: { ...DEFAULT_CONFIGS.minimax, ...stored?.minimax },
-        glm: { ...DEFAULT_CONFIGS.glm, ...stored?.glm },
+        deepseek: { ...DEFAULT_CONFIGS.deepseek, ...stored?.deepseek },
       };
     } catch {
       return { ...DEFAULT_CONFIGS };
@@ -46,7 +39,7 @@ export class ConfigStorage {
   /**
    * 获取单个提供商的配置
    */
-  async get(provider: 'minimax' | 'glm'): Promise<APIProviderConfig> {
+  async get(provider: 'deepseek'): Promise<APIProviderConfig> {
     const all = await this.getAll();
     return all[provider];
   }
@@ -54,7 +47,7 @@ export class ConfigStorage {
   /**
    * 保存单个提供商的配置
    */
-  async save(provider: 'minimax' | 'glm', config: Partial<APIProviderConfig>): Promise<void> {
+  async save(provider: 'deepseek', config: Partial<APIProviderConfig>): Promise<void> {
     const all = await this.getAll();
     all[provider] = { ...all[provider], ...config };
     await chrome.storage.local.set({ [STORAGE_KEY]: all });

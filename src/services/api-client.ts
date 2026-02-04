@@ -1,7 +1,7 @@
 // src/services/api-client.ts
 
 export interface APIConfig {
-  provider: 'minimax' | 'glm';
+  provider: 'deepseek';
   apiKey: string;
   baseUrl: string;
 }

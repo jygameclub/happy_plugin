@@ -14,63 +14,61 @@
       <span class="header-version">v1.0.0</span>
     </header>
 
+    <!-- Section 0: API 测试聊天 -->
+    <section class="panel" data-panel="chat-test">
+      <div class="panel-header" data-toggle="chat-test">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">API 测试聊天</span>
+      </div>
+      <div class="panel-content" id="chat-test-content">
+        <div class="chat-api-selector">
+          <label class="label">API:</label>
+          <span class="api-label">DeepSeek</span>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-empty">发送消息测试 API 是否正常工作</div>
+        </div>
+        <div class="chat-input-area">
+          <input type="text" class="input-text" id="chat-input" placeholder="输入测试消息...">
+          <button class="btn btn-small btn-primary" id="chat-send-btn">发送</button>
+          <button class="btn btn-small btn-secondary" id="chat-clear-btn">清空</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Section 1: 环境 / API 配置 -->
-    <section class="panel" data-panel="environment">
+    <section class="panel collapsed" data-panel="environment">
       <div class="panel-header" data-toggle="environment">
         <span class="panel-icon">&#9662;</span>
         <span class="panel-title">环境 / API 配置</span>
       </div>
       <div class="panel-content" id="environment-content">
-        <!-- MiniMax API 配置 -->
+        <!-- DeepSeek API 配置 -->
         <div class="api-config-section">
           <div class="api-config-header">
-            <span class="api-name">MiniMax API</span>
-            <span class="api-indicator" id="minimax-status">--</span>
+            <span class="api-name">DeepSeek API</span>
+            <span class="api-indicator" id="deepseek-status">--</span>
           </div>
-          <div class="api-config-form" id="minimax-config-form">
+          <div class="api-config-form" id="deepseek-config-form">
             <div class="form-group">
-              <label class="label" for="minimax-base-url">Base URL:</label>
-              <input type="text" class="input-text" id="minimax-base-url" placeholder="https://api.minimax.chat">
+              <label class="label" for="deepseek-base-url">Base URL:</label>
+              <input type="text" class="input-text" id="deepseek-base-url" placeholder="https://api.deepseek.com">
             </div>
             <div class="form-group">
-              <label class="label" for="minimax-api-key">API Key:</label>
-              <input type="password" class="input-text" id="minimax-api-key" placeholder="输入 API Key">
+              <label class="label" for="deepseek-api-key">API Key:</label>
+              <input type="password" class="input-text" id="deepseek-api-key" placeholder="输入 API Key">
             </div>
             <div class="btn-group">
-              <button class="btn btn-small btn-secondary" id="save-minimax-btn">保存</button>
-              <button class="btn btn-small btn-primary" id="check-minimax-btn">检查连接</button>
+              <button class="btn btn-small btn-secondary" id="save-deepseek-btn">保存</button>
+              <button class="btn btn-small btn-primary" id="check-deepseek-btn">检查连接</button>
             </div>
           </div>
         </div>
-
-        <!-- GLM API 配置 -->
-        <div class="api-config-section">
-          <div class="api-config-header">
-            <span class="api-name">GLM API</span>
-            <span class="api-indicator" id="glm-status">--</span>
-          </div>
-          <div class="api-config-form" id="glm-config-form">
-            <div class="form-group">
-              <label class="label" for="glm-base-url">Base URL:</label>
-              <input type="text" class="input-text" id="glm-base-url" placeholder="https://open.bigmodel.cn">
-            </div>
-            <div class="form-group">
-              <label class="label" for="glm-api-key">API Key:</label>
-              <input type="password" class="input-text" id="glm-api-key" placeholder="输入 API Key">
-            </div>
-            <div class="btn-group">
-              <button class="btn btn-small btn-secondary" id="save-glm-btn">保存</button>
-              <button class="btn btn-small btn-primary" id="check-glm-btn">检查连接</button>
-            </div>
-          </div>
-        </div>
-
-        <button class="btn btn-primary btn-full" id="check-all-api-btn">检查所有 API</button>
       </div>
     </section>
 
     <!-- Section 2: 会话 / 终端 -->
-    <section class="panel" data-panel="session">
+    <section class="panel collapsed" data-panel="session">
       <div class="panel-header" data-toggle="session">
         <span class="panel-icon">&#9662;</span>
         <span class="panel-title">会话 / 终端</span>
@@ -88,7 +86,7 @@
     </section>
 
     <!-- Section 3: 输入模拟 -->
-    <section class="panel" data-panel="input">
+    <section class="panel collapsed" data-panel="input">
       <div class="panel-header" data-toggle="input">
         <span class="panel-icon">&#9662;</span>
         <span class="panel-title">输入模拟</span>
@@ -108,7 +106,7 @@
     </section>
 
     <!-- Section 4: API / AI 判断 -->
-    <section class="panel" data-panel="ai-judge">
+    <section class="panel collapsed" data-panel="ai-judge">
       <div class="panel-header" data-toggle="ai-judge">
         <span class="panel-icon">&#9662;</span>
         <span class="panel-title">API / AI 判断</span>
@@ -133,7 +131,7 @@
     </section>
 
     <!-- Section 5: 动作模拟 -->
-    <section class="panel" data-panel="action">
+    <section class="panel collapsed" data-panel="action">
       <div class="panel-header" data-toggle="action">
         <span class="panel-icon">&#9662;</span>
         <span class="panel-title">动作模拟</span>
@@ -150,7 +148,7 @@
     </section>
 
     <!-- Section 6: 日志与检查器 -->
-    <section class="panel" data-panel="logs">
+    <section class="panel collapsed" data-panel="logs">
       <div class="panel-header" data-toggle="logs">
         <span class="panel-icon">&#9662;</span>
         <span class="panel-title">日志与检查器</span>
