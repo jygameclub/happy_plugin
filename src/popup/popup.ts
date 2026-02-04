@@ -10,7 +10,7 @@ async function init(): Promise<void> {
     sessionCountEl.textContent = state.sessions?.length?.toString() || '0';
   }
   if (activeSessionEl) {
-    activeSessionEl.textContent = state.activeSessionId || 'None';
+    activeSessionEl.textContent = state.activeSessionId || '无';
   }
 
   document.getElementById('btn-open-panel')?.addEventListener('click', async () => {

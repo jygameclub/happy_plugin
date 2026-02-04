@@ -1,40 +1,40 @@
-# Happy Debug Console
+# Happy 调试控制台
 
-Chrome Extension v1.0 for debugging multi-terminal Happy environments.
+用于调试 Happy 多终端环境的 Chrome 扩展 v1.0。
 
-## Features
+## 功能特性
 
-- **Session Scanning**: Detect and list all terminal sessions on page
-- **Input Preview**: Test input injection without execution
-- **AI Analysis**: Analyze session state with AI-powered judgment
-- **Action Preview**: Preview suggested actions before execution
-- **Debug Logging**: Full action logging with export capability
+- **会话扫描**: 检测并列出页面上的所有终端会话
+- **输入预览**: 在执行前测试输入注入
+- **AI 分析**: 使用 AI 智能判断分析会话状态
+- **动作预览**: 在执行前预览建议的操作
+- **调试日志**: 完整的操作日志记录与导出功能
 
-## Installation
+## 安装方法
 
-1. Clone repository
-2. Run `npm install`
-3. Run `npm run build`
-4. Load `dist/` folder in Chrome as unpacked extension
+1. 克隆代码仓库
+2. 运行 `npm install`
+3. 运行 `npm run build`
+4. 在 Chrome 中以开发者模式加载 `dist/` 文件夹
 
-## Development
+## 开发指南
 
 ```bash
-npm run dev    # Watch mode
-npm test       # Run tests
-npm run build  # Production build
+npm run dev    # 监视模式
+npm test       # 运行测试
+npm run build  # 生产构建
 ```
 
-## Usage
+## 使用方法
 
-1. Click extension icon to open popup
-2. Click "Open Debug Panel" for full console
-3. Use "Scan Sessions" to detect terminals
-4. Select a session to interact with
-5. Use input preview and AI analysis features
+1. 点击扩展图标打开弹出窗口
+2. 点击"打开调试面板"进入完整控制台
+3. 使用"扫描会话"检测终端
+4. 选择要交互的会话
+5. 使用输入预览和 AI 分析功能
 
-## Safety
+## 安全说明
 
-- All actions require preview before execution
-- Dangerous commands are detected and blocked
-- No automatic execution without confirmation
+- 所有操作在执行前都需要预览确认
+- 危险命令会被检测并阻止
+- 无需确认不会自动执行任何操作

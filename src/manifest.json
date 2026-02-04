@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Happy Debug Console",
+  "name": "Happy 调试控制台",
   "version": "1.0.0",
-  "description": "Debug Console for Happy multi-terminal environments",
+  "description": "Happy 多终端环境调试控制台",
   "permissions": [
     "storage",
     "activeTab",

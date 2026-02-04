@@ -27,7 +27,7 @@ class DebugConsole {
     this.initPanelToggles();
     this.initEventListeners();
     this.loadInitialState();
-    this.log('INFO', 'Debug Console initialized');
+    this.log('信息', '调试控制台已初始化');
   }
 
   // ==================== Panel Toggle ====================
@@ -100,13 +100,13 @@ class DebugConsole {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) {
-        this.log('ERROR', 'No active tab found');
+        this.log('错误', '未找到活动标签页');
         return null;
       }
       const response = await chrome.tabs.sendMessage(tab.id, message);
       return response as T;
     } catch (error) {
-      this.log('ERROR', `Content script error: ${error}`);
+      this.log('错误', `内容脚本错误: ${error}`);
       return null;
     }
   }
@@ -116,7 +116,7 @@ class DebugConsole {
       const response = await chrome.runtime.sendMessage(message);
       return response as T;
     } catch (error) {
-      this.log('ERROR', `Background error: ${error}`);
+      this.log('错误', `后台错误: ${error}`);
       return null;
     }
   }
@@ -189,7 +189,7 @@ class DebugConsole {
     }
     if (btn) btn.classList.add('loading');
 
-    this.log('API_CHECK', `Checking ${provider.toUpperCase()} API...`);
+    this.log('API检查', `正在检查 ${provider.toUpperCase()} API...`);
 
     const response = await this.sendToBackground<APIStatus>({
       type: 'CHECK_API',
@@ -203,13 +203,13 @@ class DebugConsole {
         statusEl.textContent = `${response.latency}ms`;
         statusEl.className = 'api-indicator connected';
       }
-      this.log('API_CHECK', `${provider.toUpperCase()} connected (${response.latency}ms)`, 'success');
+      this.log('API检查', `${provider.toUpperCase()} 已连接 (${response.latency}ms)`, 'success');
     } else {
       if (statusEl) {
         statusEl.textContent = 'Error';
         statusEl.className = 'api-indicator error';
       }
-      this.log('API_CHECK', `${provider.toUpperCase()} failed: ${response?.error || 'Unknown error'}`, 'error');
+      this.log('API检查', `${provider.toUpperCase()} 失败: ${response?.error || '未知错误'}`, 'error');
     }
   }
 
@@ -219,7 +219,7 @@ class DebugConsole {
     const btn = document.getElementById('scan-sessions-btn');
     if (btn) btn.classList.add('loading');
 
-    this.log('SCAN', 'Scanning for terminal sessions...');
+    this.log('扫描', '正在扫描终端会话...');
 
     const response = await this.sendToContent<{ sessions: Session[] }>({
       type: 'SCAN_SESSIONS',
@@ -234,9 +234,9 @@ class DebugConsole {
         sessions: this.sessions,
       });
       this.renderSessionList();
-      this.log('SCAN', `Found ${this.sessions.length} session(s)`, 'success');
+      this.log('扫描', `找到 ${this.sessions.length} 个会话`, 'success');
     } else {
-      this.log('SCAN', 'No sessions found or scan failed', 'error');
+      this.log('扫描', '未找到会话或扫描失败', 'error');
     }
   }
 
@@ -245,7 +245,7 @@ class DebugConsole {
     if (!listEl) return;
 
     if (this.sessions.length === 0) {
-      listEl.innerHTML = '<div class="session-empty">No sessions found. Click "Scan Sessions" to detect terminals.</div>';
+      listEl.innerHTML = '<div class="session-empty">未找到会话。点击"扫描会话"来检测终端。</div>';
       this.updateActiveSessionDisplay();
       return;
     }
@@ -256,7 +256,7 @@ class DebugConsole {
         <div class="session-item ${session.sessionId === this.activeSessionId ? 'active' : ''}"
              data-session-id="${session.sessionId}">
           <span class="session-title">${this.escapeHtml(session.title)}</span>
-          <span class="session-visibility">${session.visible ? 'visible' : 'hidden'}</span>
+          <span class="session-visibility">${session.visible ? '可见' : '隐藏'}</span>
         </div>
       `
       )
@@ -288,7 +288,7 @@ class DebugConsole {
 
     this.renderSessionList();
     const session = this.sessions.find((s) => s.sessionId === sessionId);
-    this.log('SESSION', `Switched to: ${session?.title || sessionId}`, 'success');
+    this.log('会话', `已切换到: ${session?.title || sessionId}`, 'success');
   }
 
   private updateActiveSessionDisplay(): void {
@@ -299,7 +299,7 @@ class DebugConsole {
       const session = this.sessions.find((s) => s.sessionId === this.activeSessionId);
       infoEl.textContent = session?.title || this.activeSessionId;
     } else {
-      infoEl.textContent = 'None selected';
+      infoEl.textContent = '未选择';
     }
   }
 
@@ -311,16 +311,16 @@ class DebugConsole {
 
     const text = textareaEl.value.trim();
     if (!text) {
-      this.log('INPUT', 'No input text provided', 'error');
+      this.log('输入', '未提供输入文本', 'error');
       return;
     }
 
     if (!this.activeSessionId) {
-      this.log('INPUT', 'No active session selected', 'error');
+      this.log('输入', '未选择活动会话', 'error');
       return;
     }
 
-    this.log('INPUT', `Previewing: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+    this.log('输入', `预览: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
 
     await this.sendToContent({
       type: 'PREVIEW_INPUT',
@@ -352,14 +352,14 @@ class DebugConsole {
 
     this.pendingAction = null;
     this.updateActionPreview();
-    this.log('INPUT', 'Input cleared');
+    this.log('输入', '输入已清空');
   }
 
   // ==================== AI Judge ====================
 
   async analyzeSession(): Promise<void> {
     if (!this.activeSessionId) {
-      this.log('ANALYZE', 'No active session selected', 'error');
+      this.log('分析', '未选择活动会话', 'error');
       return;
     }
 
@@ -369,7 +369,7 @@ class DebugConsole {
     const btn = document.getElementById('analyze-btn');
     if (btn) btn.classList.add('loading');
 
-    this.log('ANALYZE', `Analyzing last ${lines} lines...`);
+    this.log('分析', `正在分析最后 ${lines} 行...`);
 
     // Get session output from content script
     const outputResponse = await this.sendToContent<{ output: string[] }>({
@@ -380,7 +380,7 @@ class DebugConsole {
 
     if (!outputResponse?.output) {
       if (btn) btn.classList.remove('loading');
-      this.log('ANALYZE', 'Failed to get session output', 'error');
+      this.log('分析', '获取会话输出失败', 'error');
       this.renderAIResult(null);
       return;
     }
@@ -397,13 +397,13 @@ class DebugConsole {
     if (response?.result) {
       this.renderAIResult(response.result);
       this.log(
-        'ANALYZE',
-        `Role: ${response.result.role}, State: ${response.result.state}, Confidence: ${Math.round(response.result.confidence * 100)}%`,
+        '分析',
+        `角色: ${response.result.role}, 状态: ${response.result.state}, 置信度: ${Math.round(response.result.confidence * 100)}%`,
         'success'
       );
     } else {
       this.renderAIResult(null);
-      this.log('ANALYZE', 'Analysis failed or not implemented', 'error');
+      this.log('分析', '分析失败或未实现', 'error');
     }
   }
 
@@ -412,7 +412,7 @@ class DebugConsole {
     if (!resultEl) return;
 
     if (!result) {
-      resultEl.innerHTML = '<div class="ai-result-empty">No analysis yet. Click "Analyze Session" to get AI judgment.</div>';
+      resultEl.innerHTML = '<div class="ai-result-empty">暂无分析结果。点击"分析会话"获取 AI 判断。</div>';
       return;
     }
 
@@ -423,15 +423,15 @@ class DebugConsole {
     resultEl.innerHTML = `
       <div class="ai-result-data">
         <div class="ai-result-row">
-          <span class="ai-result-label">Role:</span>
+          <span class="ai-result-label">角色:</span>
           <span class="ai-result-value ${roleClass}">${result.role}</span>
         </div>
         <div class="ai-result-row">
-          <span class="ai-result-label">State:</span>
+          <span class="ai-result-label">状态:</span>
           <span class="ai-result-value ${stateClass}">${result.state}</span>
         </div>
         <div class="ai-result-row">
-          <span class="ai-result-label">Confidence:</span>
+          <span class="ai-result-label">置信度:</span>
           <span class="ai-result-value">${confidencePercent}%</span>
         </div>
       </div>
@@ -448,7 +448,7 @@ class DebugConsole {
     if (!previewEl) return;
 
     if (!this.pendingAction) {
-      previewEl.innerHTML = '<div class="action-preview-empty">No action pending</div>';
+      previewEl.innerHTML = '<div class="action-preview-empty">暂无待执行动作</div>';
       if (executeBtn) executeBtn.disabled = true;
       if (cancelBtn) cancelBtn.disabled = true;
       return;
@@ -463,11 +463,11 @@ class DebugConsole {
 
   async executeAction(): Promise<void> {
     if (!this.pendingAction) {
-      this.log('ACTION', 'No pending action to execute', 'error');
+      this.log('动作', '无待执行动作', 'error');
       return;
     }
 
-    this.log('ACTION', `Executing: "${this.pendingAction.command.substring(0, 50)}..."`);
+    this.log('动作', `正在执行: "${this.pendingAction.command.substring(0, 50)}..."`);
 
     // Send execute command to content script
     await this.sendToContent({
@@ -478,7 +478,7 @@ class DebugConsole {
 
     // Note: Actual execution (pressing Enter) would be handled by content script
     // For now, we log the action
-    this.log('ACTION', 'Action executed successfully', 'success');
+    this.log('动作', '动作执行成功', 'success');
 
     this.pendingAction = null;
     this.updateActionPreview();
@@ -490,7 +490,7 @@ class DebugConsole {
       return;
     }
 
-    this.log('ACTION', 'Action cancelled');
+    this.log('动作', '动作已取消');
 
     if (this.pendingAction.sessionId) {
       await this.sendToContent({
@@ -506,7 +506,7 @@ class DebugConsole {
   // ==================== Logs Export ====================
 
   async exportSnapshot(): Promise<void> {
-    this.log('EXPORT', 'Exporting debug snapshot...');
+    this.log('导出', '正在导出调试快照...');
 
     const response = await this.sendToBackground<{ snapshot: Record<string, unknown> }>({
       type: 'EXPORT_SNAPSHOT',
@@ -525,9 +525,9 @@ class DebugConsole {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      this.log('EXPORT', 'Snapshot exported successfully', 'success');
+      this.log('导出', '快照导出成功', 'success');
     } else {
-      this.log('EXPORT', 'Failed to export snapshot', 'error');
+      this.log('导出', '快照导出失败', 'error');
     }
   }
 
@@ -535,9 +535,9 @@ class DebugConsole {
     this.logs = [];
     const logViewer = document.getElementById('log-viewer');
     if (logViewer) {
-      logViewer.innerHTML = '<div class="log-empty">No logs yet.</div>';
+      logViewer.innerHTML = '<div class="log-empty">暂无日志。</div>';
     }
-    this.log('LOGS', 'Logs cleared');
+    this.log('日志', '日志已清空');
   }
 
   // ==================== Utilities ====================
