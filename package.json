@@ -1,0 +1,17 @@
+{
+  "name": "happy-plugin",
+  "version": "1.0.0",
+  "description": "Happy Plugin Debug Console for multi-terminal environments",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.260",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vitest": "^1.4.0"
+  }
+}
