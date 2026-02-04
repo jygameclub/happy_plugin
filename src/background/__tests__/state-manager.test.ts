@@ -56,4 +56,21 @@ describe('StateManager', () => {
     expect(snapshot.logs).toHaveLength(3);
     expect(snapshot.logs[2].action).toBe('TEST');
   });
+
+  it('should clear logs', () => {
+    manager.logAction('TEST1', {});
+    manager.logAction('TEST2', {});
+    manager.clearLogs();
+
+    expect(manager.getLogs()).toHaveLength(0);
+  });
+
+  it('should cap logs at 1000 entries', () => {
+    for (let i = 0; i < 1050; i++) {
+      manager.logAction('TEST', { index: i });
+    }
+
+    const logs = manager.getLogs();
+    expect(logs.length).toBeLessThanOrEqual(1000);
+  });
 });

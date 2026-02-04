@@ -49,6 +49,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: 'Not implemented' });
       break;
     }
+    default:
+      sendResponse({ success: false, error: 'Unknown message type' });
+      break;
   }
   return true;
 });
