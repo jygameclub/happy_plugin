@@ -51,4 +51,55 @@ describe('OutputListener', () => {
 
     expect(lines).toHaveLength(0);
   });
+
+  it('should detect waiting state with shell prompt', () => {
+    document.body.innerHTML = `
+      <div data-session-id="test-session">
+        <div class="terminal-output">
+          <div>command output</div>
+          <div>user@host:~$ </div>
+        </div>
+      </div>
+    `;
+
+    const listener = new OutputListener();
+    const result = listener.detectWaitingState('test-session');
+
+    expect(result.waiting).toBe(true);
+    expect(result.signals.matchedPattern).toBe('prompt_detected');
+  });
+
+  it('should detect non-waiting state with normal output', () => {
+    document.body.innerHTML = `
+      <div data-session-id="test-session">
+        <div class="terminal-output">
+          <div>Processing...</div>
+          <div>Still running</div>
+        </div>
+      </div>
+    `;
+
+    const listener = new OutputListener();
+    const result = listener.detectWaitingState('test-session');
+
+    expect(result.waiting).toBe(false);
+    expect(result.signals.matchedPattern).toBe(null);
+  });
+
+  it('should extract lines from plain text output', () => {
+    document.body.innerHTML = `
+      <div data-session-id="test-session">
+        <pre class="terminal-output">Line 1
+Line 2
+Line 3</pre>
+      </div>
+    `;
+
+    const listener = new OutputListener();
+    const lines = listener.getRecentOutput('test-session', 2);
+
+    expect(lines).toHaveLength(2);
+    expect(lines).toContain('Line 2');
+    expect(lines).toContain('Line 3');
+  });
 });
