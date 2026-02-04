@@ -59,4 +59,46 @@ describe('InputInjector', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
   });
+
+  it('should rollback to previous value', () => {
+    document.body.innerHTML = `
+      <div data-session-id="test-session">
+        <input type="text" class="terminal-input" value="original" />
+      </div>
+    `;
+
+    const injector = new InputInjector();
+    injector.preview('test-session', 'new value');
+    injector.rollback('test-session');
+
+    const input = document.querySelector('.terminal-input') as HTMLInputElement;
+    expect(input.value).toBe('original');
+  });
+
+  it('should remove highlight when disabled', () => {
+    document.body.innerHTML = `
+      <div data-session-id="test-session"></div>
+    `;
+
+    const injector = new InputInjector();
+    injector.highlight('test-session', true);
+    injector.highlight('test-session', false);
+
+    const container = document.querySelector('[data-session-id="test-session"]') as HTMLElement;
+    expect(container.style.outline).toBe('');
+  });
+
+  it('should return error when input field not found in session', () => {
+    document.body.innerHTML = `
+      <div data-session-id="test-session">
+        <span>No input here</span>
+      </div>
+    `;
+
+    const injector = new InputInjector();
+    const result = injector.preview('test-session', 'test');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Input field not found');
+  });
 });
