@@ -13,6 +13,9 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       sendResponse({ type: 'SCAN_SESSIONS_RESULT', sessions });
       break;
     }
+    default:
+      // Other message types will be handled in future tasks
+      break;
   }
   return true; // Keep channel open for async response
 });
