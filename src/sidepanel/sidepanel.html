@@ -40,8 +40,26 @@
           </div>
         </div>
         <div class="form-group">
-          <label class="label">分析提示词:</label>
-          <textarea class="input-textarea" id="ai-analysis-prompt" rows="3">读取右边区域的内容分析当前最应该选底部那个选择按钮答案和原因</textarea>
+          <label class="label">分析提示词（可自定义）:</label>
+          <textarea class="input-textarea" id="ai-analysis-prompt" rows="2">分析右边区域的内容，判断最应该选择底部哪个按钮</textarea>
+        </div>
+        <div class="form-group">
+          <label class="label">格式化提示词（固定）:</label>
+          <div class="format-prompt-display">请严格按照以下格式返回：【结果】：选择的按钮名称 【原因】：选择该按钮的原因分析</div>
+        </div>
+        <!-- 截图设置 -->
+        <div class="form-row" style="display: flex; gap: 10px; align-items: center; margin: 10px 0;">
+          <div class="form-group" style="flex: 0 0 auto; margin-bottom: 0;">
+            <label class="label">截图区域:</label>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 11px; color: #888;">右侧</span>
+              <input type="range" class="input-range" id="screenshot-crop-percent" min="50" max="100" value="80" style="width: 80px;">
+              <span id="screenshot-crop-value" style="font-size: 12px; color: #ccc; min-width: 35px;">80%</span>
+            </div>
+          </div>
+          <button class="btn btn-tiny btn-secondary" id="debug-screenshot-btn" title="调试截图（仅预览不分析）">
+            🔍 调试截图
+          </button>
         </div>
         <div class="btn-group" style="justify-content: center; margin: 12px 0;">
           <button class="btn btn-primary" id="ai-analysis-btn" style="padding: 12px 24px; font-size: 14px;">

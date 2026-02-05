@@ -29,6 +29,21 @@ interface ChatMessageData {
 
 type APIProvider = 'deepseek' | 'openai';
 
+// 固定的格式化提示词
+const FORMAT_PROMPT = `
+
+请严格按照以下格式返回分析结果：
+【结果】：（在这里填写你建议选择的按钮名称）
+【原因】：（在这里填写选择该按钮的详细原因分析）
+
+注意：必须严格遵循上述格式，【结果】和【原因】是必需的字段。`;
+
+interface AnalysisResult {
+  result: string;
+  reason: string;
+  raw: string;
+}
+
 class DebugConsole {
   private sessions: Session[] = [];
   private logs: LogEntry[] = [];
@@ -146,6 +161,16 @@ class DebugConsole {
     // AI 分析区域 provider 切换时更新模型列表
     document.getElementById('ai-analysis-provider')?.addEventListener('change', (e) => {
       this.updateAIAnalysisModelOptions((e.target as HTMLSelectElement).value as APIProvider);
+    });
+    // 截图比例滑块
+    document.getElementById('screenshot-crop-percent')?.addEventListener('input', (e) => {
+      const value = (e.target as HTMLInputElement).value;
+      const valueEl = document.getElementById('screenshot-crop-value');
+      if (valueEl) valueEl.textContent = `${value}%`;
+    });
+    // 调试截图按钮
+    document.getElementById('debug-screenshot-btn')?.addEventListener('click', () => {
+      this.debugScreenshot();
     });
     document.getElementById('screenshot-btn')?.addEventListener('click', () => {
       this.takeScreenshot();
@@ -956,6 +981,135 @@ class DebugConsole {
     };
   }
 
+  /**
+   * 解析 AI 返回的格式化结果
+   */
+  private parseAnalysisResult(content: string): AnalysisResult {
+    const result: AnalysisResult = {
+      result: '',
+      reason: '',
+      raw: content,
+    };
+
+    // 尝试匹配【结果】：xxx
+    const resultMatch = content.match(/【结果】[：:]\s*(.+?)(?=【|$)/s);
+    if (resultMatch) {
+      result.result = resultMatch[1].trim();
+    }
+
+    // 尝试匹配【原因】：xxx
+    const reasonMatch = content.match(/【原因】[：:]\s*(.+?)(?=【|$)/s);
+    if (reasonMatch) {
+      result.reason = reasonMatch[1].trim();
+    }
+
+    return result;
+  }
+
+  /**
+   * 获取截图裁剪比例（右侧百分比）
+   */
+  private getScreenshotCropPercent(): number {
+    const rangeEl = document.getElementById('screenshot-crop-percent') as HTMLInputElement;
+    return parseInt(rangeEl?.value || '80', 10);
+  }
+
+  /**
+   * 裁剪截图，只保留右侧指定百分比的区域
+   */
+  private async cropScreenshotRight(dataUrl: string, rightPercent: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('无法创建 canvas context'));
+          return;
+        }
+
+        // 计算裁剪区域（从右侧开始）
+        const cropWidth = Math.floor(img.width * (rightPercent / 100));
+        const startX = img.width - cropWidth;
+
+        canvas.width = cropWidth;
+        canvas.height = img.height;
+
+        // 绘制裁剪后的图像
+        ctx.drawImage(img, startX, 0, cropWidth, img.height, 0, 0, cropWidth, img.height);
+
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => reject(new Error('加载截图失败'));
+      img.src = dataUrl;
+    });
+  }
+
+  /**
+   * 调试截图 - 仅预览不发送给 AI
+   */
+  private async debugScreenshot(): Promise<void> {
+    const btn = document.getElementById('debug-screenshot-btn');
+    const viewBtn = document.getElementById('view-screenshot-btn');
+
+    if (btn) btn.classList.add('loading');
+    this.log('调试截图', '正在截取...');
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        throw new Error('未找到活动标签页');
+      }
+
+      // 截取完整页面
+      const fullDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+        format: 'png',
+        quality: 100,
+      });
+
+      // 裁剪截图
+      const cropPercent = this.getScreenshotCropPercent();
+      const croppedDataUrl = await this.cropScreenshotRight(fullDataUrl, cropPercent);
+
+      // 保存裁剪后的截图用于预览
+      this.lastScreenshotDataUrl = croppedDataUrl;
+      if (viewBtn) viewBtn.style.display = 'inline-flex';
+
+      this.log('调试截图', `截图完成 (右侧 ${cropPercent}%)`, 'success');
+
+      // 直接显示预览
+      this.showScreenshotPreview();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log('调试截图', `错误: ${errorMessage}`, 'error');
+    } finally {
+      if (btn) btn.classList.remove('loading');
+    }
+  }
+
+  /**
+   * 渲染格式化的分析结果
+   */
+  private renderAnalysisResult(parsed: AnalysisResult, latency?: number): string {
+    // 如果成功解析出结果和原因，显示格式化的结果
+    if (parsed.result) {
+      return `
+        <div class="analysis-result-box">
+          <div class="analysis-result-header">推荐选择</div>
+          <div class="analysis-result-value">${this.escapeHtml(parsed.result)}</div>
+        </div>
+        <div class="analysis-reason-box">
+          <div class="analysis-reason-header">原因分析</div>
+          <div class="analysis-reason-content">${this.escapeHtml(parsed.reason || '未提供原因')}</div>
+        </div>
+        ${latency ? `<div class="analysis-meta">耗时: ${latency}ms</div>` : ''}
+      `;
+    }
+
+    // 如果没有解析成功，显示原始内容
+    return `<div class="analysis-content">${this.escapeHtml(parsed.raw)}</div>`;
+  }
+
   private async analyzeWithAI(): Promise<void> {
     const btn = document.getElementById('ai-analysis-btn');
     const viewBtn = document.getElementById('view-screenshot-btn');
@@ -964,9 +1118,12 @@ class DebugConsole {
     const providerEl = document.getElementById('ai-analysis-provider') as HTMLSelectElement;
     const modelEl = document.getElementById('ai-analysis-model') as HTMLSelectElement;
 
-    const prompt = promptEl?.value.trim() || '读取右边区域的内容分析当前最应该选底部那个选择按钮答案和原因';
+    const userPrompt = promptEl?.value.trim() || '分析右边区域的内容，判断最应该选择底部哪个按钮';
     const selectedProvider = (providerEl?.value || 'deepseek') as APIProvider;
     const selectedModel = modelEl?.value || '';
+
+    // 组合用户提示词和格式化提示词
+    const fullPrompt = userPrompt + FORMAT_PROMPT;
 
     // 检查 DeepSeek 是否支持视觉分析
     if (selectedProvider === 'deepseek') {
@@ -1000,18 +1157,22 @@ class DebugConsole {
         throw new Error('未找到活动标签页');
       }
 
-      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+      const fullDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
         format: 'png',
         quality: 100,
       });
 
-      // 保存截图数据用于预览
-      this.lastScreenshotDataUrl = dataUrl;
+      // 2. 裁剪截图（只保留右侧指定百分比）
+      const cropPercent = this.getScreenshotCropPercent();
+      const croppedDataUrl = await this.cropScreenshotRight(fullDataUrl, cropPercent);
+
+      // 保存裁剪后的截图数据用于预览
+      this.lastScreenshotDataUrl = croppedDataUrl;
       if (viewBtn) viewBtn.style.display = 'inline-flex';
 
-      this.log('AI分析', '截图完成，正在发送给 AI...');
+      this.log('AI分析', `截图完成 (右侧 ${cropPercent}%)，正在发送给 AI...`);
 
-      // 2. 发送给 AI 分析
+      // 3. 发送给 AI 分析（使用组合后的完整提示词）
       const response = await this.sendToBackground<{
         success: boolean;
         content?: string;
@@ -1025,17 +1186,19 @@ class DebugConsole {
           baseUrl: analysisConfig.baseUrl,
           model: analysisConfig.model,
         },
-        image: dataUrl,
-        prompt,
+        image: croppedDataUrl,
+        prompt: fullPrompt,
       });
 
       if (btn) btn.classList.remove('loading');
 
       if (response?.success && response.content) {
+        // 解析并格式化显示结果
+        const parsed = this.parseAnalysisResult(response.content);
         if (resultEl) {
-          resultEl.innerHTML = `<div class="analysis-content">${this.escapeHtml(response.content)}</div>`;
+          resultEl.innerHTML = this.renderAnalysisResult(parsed, response.latency);
         }
-        this.log('AI分析', `分析完成 (${response.latency}ms)`, 'success');
+        this.log('AI分析', `分析完成 (${response.latency}ms) - 结果: ${parsed.result || '未识别'}`, 'success');
       } else {
         const errorMsg = response?.error || '分析失败';
         if (resultEl) {

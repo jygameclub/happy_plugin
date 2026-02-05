@@ -319,6 +319,48 @@ body {
   border-color: #0078d4;
 }
 
+/* Input Range (Slider) */
+.input-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: #3c3c3c;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.input-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #0078d4;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.input-range::-webkit-slider-thumb:hover {
+  background: #1084d8;
+}
+
+.input-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #0078d4;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+}
+
+.input-range:focus {
+  outline: none;
+}
+
+.input-range:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.3);
+}
+
 /* Empty States */
 .session-empty,
 .log-empty,
@@ -803,6 +845,79 @@ body {
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+
+/* 格式化提示词显示 */
+.format-prompt-display {
+  background-color: #2a2a2a;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #888;
+  font-family: 'Consolas', 'Monaco', monospace;
+  white-space: pre-wrap;
+}
+
+/* 分析结果框 - 推荐选择 */
+.analysis-result-box {
+  background: linear-gradient(135deg, #1a5f2a 0%, #0d3d18 100%);
+  border: 2px solid #4caf50;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.analysis-result-header {
+  font-size: 11px;
+  color: #81c784;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.analysis-result-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  line-height: 1.3;
+}
+
+/* 分析原因框 */
+.analysis-reason-box {
+  background-color: #2a2a2a;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.analysis-reason-header {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.analysis-reason-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #ccc;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 分析元信息 */
+.analysis-meta {
+  font-size: 10px;
+  color: #666;
+  text-align: right;
+  margin-top: 4px;
 }
 
 /* ========================================
