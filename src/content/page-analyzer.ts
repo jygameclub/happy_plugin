@@ -488,13 +488,54 @@ export class PageAnalyzer {
 
   /**
    * 点击元素
+   * 模拟真实的用户点击，包括鼠标事件
    */
   clickElement(selector: string): boolean {
     try {
       const el = document.querySelector(selector) as HTMLElement;
       if (!el) return false;
 
+      // 先滚动到元素可见
+      el.scrollIntoView({ behavior: 'instant', block: 'center' });
+
+      // 获取元素中心点
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+
+      // 创建完整的鼠标事件序列来模拟真实点击
+      const mousedownEvent = new MouseEvent('mousedown', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+      });
+
+      const mouseupEvent = new MouseEvent('mouseup', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+      });
+
+      const clickEvent = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+      });
+
+      // 依次触发事件
+      el.dispatchEvent(mousedownEvent);
+      el.dispatchEvent(mouseupEvent);
+      el.dispatchEvent(clickEvent);
+
+      // 同时也尝试原生 click() 方法作为备用
       el.click();
+
       return true;
     } catch {
       return false;
@@ -715,31 +756,12 @@ export class PageAnalyzer {
 
   /**
    * 生成元素选择器
+   * 使用唯一的 data 属性来标记元素，确保能准确找到
    */
   private generateSelector(el: HTMLElement): string {
-    if (el.id) {
-      return `#${el.id}`;
-    }
-
-    if (el.dataset.sessionId) {
-      return `[data-session-id="${el.dataset.sessionId}"]`;
-    }
-
-    // 尝试使用 class
-    if (el.className) {
-      const classes = el.className.split(' ').filter((c) => c && !c.includes(':'));
-      if (classes.length > 0) {
-        return `${el.tagName.toLowerCase()}.${classes[0]}`;
-      }
-    }
-
-    // 使用 nth-child
-    const parent = el.parentElement;
-    if (parent) {
-      const index = Array.from(parent.children).indexOf(el) + 1;
-      return `${el.tagName.toLowerCase()}:nth-child(${index})`;
-    }
-
-    return el.tagName.toLowerCase();
+    // 生成唯一 ID 并设置到元素上
+    const uniqueId = `happy-session-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    el.setAttribute('data-happy-id', uniqueId);
+    return `[data-happy-id="${uniqueId}"]`;
   }
 }

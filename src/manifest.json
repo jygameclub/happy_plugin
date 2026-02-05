@@ -9,7 +9,8 @@
     "tabs",
     "scripting",
     "sidePanel",
-    "debugger"
+    "debugger",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "<all_urls>"

@@ -170,10 +170,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const chatClient = new APIClient(chatConfig);
       const start = Date.now();
 
-      // DeepSeek API (OpenAI 兼容格式)
+      // 使用配置中的模型，如果没有则使用默认值
+      const defaultModel = chatConfig.provider === 'openai' ? 'gpt-4o' : 'deepseek-chat';
+      const chatModel = chatConfig.model || defaultModel;
       const endpoint = '/chat/completions';
       const body = {
-        model: 'deepseek-chat',
+        model: chatModel,
         messages: [
           { role: 'system', content: 'You are a helpful assistant.' },
           { role: 'user', content: chatMessage },
@@ -242,10 +244,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const screenshotClient = new APIClient(screenshotConfig);
       const startTime = Date.now();
 
-      // DeepSeek Vision API (OpenAI 兼容格式)
+      // 使用配置中的模型，如果没有则使用默认视觉模型
+      const defaultVisionModel = screenshotConfig.provider === 'openai' ? 'gpt-4o' : 'deepseek-chat';
+      const visionModel = screenshotConfig.model || defaultVisionModel;
       const visionEndpoint = '/chat/completions';
       const visionBody = {
-        model: 'deepseek-chat',
+        model: visionModel,
         messages: [
           {
             role: 'user',

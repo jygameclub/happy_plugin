@@ -14,8 +14,52 @@
       <span class="header-version">v1.0.0</span>
     </header>
 
-    <!-- Section 0: API 测试聊天 -->
-    <section class="panel" data-panel="chat-test">
+    <!-- Section 0: AI 分析反馈 -->
+    <section class="panel" data-panel="ai-analysis">
+      <div class="panel-header" data-toggle="ai-analysis">
+        <span class="panel-icon">&#9662;</span>
+        <span class="panel-title">AI 分析反馈</span>
+      </div>
+      <div class="panel-content" id="ai-analysis-content">
+        <!-- API 和模型选择 -->
+        <div class="form-row" style="display: flex; gap: 10px; margin-bottom: 10px;">
+          <div class="form-group" style="flex: 1; margin-bottom: 0;">
+            <label class="label">API:</label>
+            <select class="input-select" id="ai-analysis-provider">
+              <option value="deepseek">DeepSeek</option>
+              <option value="openai">OpenAI</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1; margin-bottom: 0;">
+            <label class="label">模型:</label>
+            <select class="input-select" id="ai-analysis-model">
+              <option value="deepseek-chat">deepseek-chat</option>
+              <option value="deepseek-coder">deepseek-coder</option>
+              <option value="deepseek-reasoner">deepseek-reasoner</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="label">分析提示词:</label>
+          <textarea class="input-textarea" id="ai-analysis-prompt" rows="3">读取右边区域的内容分析当前最应该选底部那个选择按钮答案和原因</textarea>
+        </div>
+        <div class="btn-group" style="justify-content: center; margin: 12px 0;">
+          <button class="btn btn-primary" id="ai-analysis-btn" style="padding: 12px 24px; font-size: 14px;">
+            📸 截图分析
+          </button>
+          <button class="btn btn-secondary" id="view-screenshot-btn" style="padding: 12px 16px; font-size: 14px; display: none;">
+            🖼️ 查看图片
+          </button>
+        </div>
+        <div class="ai-analysis-result resizable-container" id="ai-analysis-result">
+          <div class="debug-empty">点击"截图分析"按钮，AI 将分析当前页面并给出建议</div>
+        </div>
+        <div class="resize-handle" id="ai-analysis-resize-handle" title="拖动调整大小"></div>
+      </div>
+    </section>
+
+    <!-- Section 1: API 测试聊天 -->
+    <section class="panel collapsed" data-panel="chat-test">
       <div class="panel-header" data-toggle="chat-test">
         <span class="panel-icon">&#9662;</span>
         <span class="panel-title">API 测试聊天</span>
@@ -36,198 +80,117 @@
       </div>
     </section>
 
-    <!-- Section 1: 截图分析 -->
-    <section class="panel collapsed" data-panel="screenshot">
-      <div class="panel-header" data-toggle="screenshot">
+    <!-- Section 2: Happy 调试页面 -->
+    <section class="panel collapsed" data-panel="happy-debug">
+      <div class="panel-header" data-toggle="happy-debug">
         <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">截图分析</span>
+        <span class="panel-title">Happy 调试页面</span>
       </div>
-      <div class="panel-content" id="screenshot-content">
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">页面截图</span>
-            <button class="btn btn-small btn-primary" id="capture-screenshot-btn">截图</button>
-          </div>
-          <div class="screenshot-preview" id="screenshot-preview">
-            <div class="debug-empty">点击"截图"捕获当前页面</div>
-          </div>
-        </div>
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">AI 分析</span>
-          </div>
-          <div class="form-group">
-            <label class="label">分析提示词:</label>
-            <textarea class="input-textarea" id="screenshot-prompt" rows="3" placeholder="请分析这个页面的布局结构，识别左侧边栏、主内容区、会话列表等元素...">请分析这个网页截图，识别以下内容：
-1. 页面整体布局结构
-2. 左侧是否有会话列表/侧边栏
-3. 中间主内容区显示的是什么
-4. 是否有输入框、按钮等交互元素
-5. 当前页面的状态（加载中/空闲/错误等）</textarea>
-          </div>
-          <button class="btn btn-primary btn-full" id="analyze-screenshot-btn" disabled>发送截图给 AI 分析</button>
-          <div class="ai-result" id="screenshot-analysis-result">
-            <div class="ai-result-empty">截图后点击"发送截图给 AI 分析"</div>
-          </div>
-        </div>
-      </div>
-    </section>
+      <div class="panel-content" id="happy-debug-content">
 
-    <!-- Section 2: 网页调试 -->
-    <section class="panel collapsed" data-panel="page-debug">
-      <div class="panel-header" data-toggle="page-debug">
-        <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">网页调试</span>
-      </div>
-      <div class="panel-content" id="page-debug-content">
-        <!-- 页面信息 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">页面信息</span>
-            <button class="btn btn-small btn-primary" id="refresh-page-info-btn">刷新</button>
-          </div>
-          <div class="debug-info-grid" id="page-info">
-            <div class="debug-info-item">
-              <span class="debug-info-label">URL:</span>
-              <span class="debug-info-value" id="page-url">--</span>
-            </div>
-            <div class="debug-info-item">
-              <span class="debug-info-label">标题:</span>
-              <span class="debug-info-value" id="page-title">--</span>
-            </div>
+        <!-- 延时发送倒计时提示（默认隐藏） -->
+        <div class="delay-send-banner" id="delay-send-banner" style="display: none;">
+          <div class="delay-send-countdown">
+            <span class="delay-send-icon">⏱️</span>
+            <span class="delay-send-text">将在 <span id="delay-countdown">0</span> 秒后发送</span>
+            <button class="btn btn-small btn-warning" id="cancel-delay-send-btn">取消</button>
           </div>
         </div>
 
-        <!-- 页面结构 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">页面结构</span>
-            <button class="btn btn-small btn-primary" id="scan-structure-btn">扫描</button>
-          </div>
-          <div class="debug-structure" id="page-structure">
-            <div class="debug-empty">点击"扫描"分析页面结构</div>
-          </div>
-        </div>
-
-        <!-- 左侧会话列表 -->
+        <!-- 会话列表 -->
         <div class="debug-section">
           <div class="debug-section-header">
             <span class="debug-section-title">会话列表</span>
-            <button class="btn btn-small btn-primary" id="scan-sessions-list-btn">获取</button>
-          </div>
-          <div class="debug-list" id="sessions-list">
-            <div class="debug-empty">点击"获取"抓取会话列表</div>
-          </div>
-        </div>
-
-        <!-- 内容区状态 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">内容区状态</span>
-            <button class="btn btn-small btn-primary" id="scan-content-btn">检测</button>
-          </div>
-          <div class="debug-info-grid" id="content-state">
-            <div class="debug-info-item">
-              <span class="debug-info-label">类型:</span>
-              <span class="debug-info-value" id="content-type">--</span>
-            </div>
-            <div class="debug-info-item">
-              <span class="debug-info-label">状态:</span>
-              <span class="debug-info-value" id="content-status">--</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 元素交互测试 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">元素交互</span>
-          </div>
-          <div class="form-group">
-            <label class="label">CSS 选择器:</label>
-            <input type="text" class="input-text" id="element-selector" placeholder="输入 CSS 选择器...">
-          </div>
-          <div class="btn-group">
-            <button class="btn btn-small btn-secondary" id="highlight-element-btn">高亮</button>
-            <button class="btn btn-small btn-secondary" id="click-element-btn">点击</button>
-            <button class="btn btn-small btn-secondary" id="get-element-info-btn">信息</button>
-          </div>
-          <div class="debug-result" id="element-result">
-            <div class="debug-empty">选择元素后查看结果</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Section: Happy 测试 -->
-    <section class="panel" data-panel="happy-test">
-      <div class="panel-header" data-toggle="happy-test">
-        <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">Happy 测试</span>
-      </div>
-      <div class="panel-content" id="happy-test-content">
-        <!-- 会话列表测试 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">会话列表测试</span>
-            <button class="btn btn-small btn-primary" id="test-get-sessions-btn">获取列表</button>
+            <button class="btn btn-small btn-primary" id="get-sessions-btn">获取列表</button>
           </div>
           <div class="debug-info-grid">
             <div class="debug-info-item">
               <span class="debug-info-label">会话数量:</span>
-              <span class="debug-info-value" id="test-session-count">--</span>
+              <span class="debug-info-value" id="session-count">--</span>
             </div>
           </div>
-          <div class="debug-list" id="test-sessions-list" style="max-height: 200px; overflow-y: auto;">
+          <div class="debug-list" id="sessions-list" style="max-height: 250px; overflow-y: auto;">
             <div class="debug-empty">点击"获取列表"读取左侧会话</div>
           </div>
         </div>
 
-        <!-- 输入框测试 -->
+        <!-- 模拟输入 -->
         <div class="debug-section">
           <div class="debug-section-header">
-            <span class="debug-section-title">输入框测试</span>
+            <span class="debug-section-title">模拟输入</span>
           </div>
           <div class="form-group">
-            <label class="label">测试文字:</label>
-            <input type="text" class="input-text" id="test-input-text" placeholder="输入要发送的测试文字..." value="这是一条测试消息">
+            <label class="label">输入文字:</label>
+            <textarea class="input-textarea" id="input-text" rows="3" placeholder="输入要发送的测试文字...">这是一条测试消息</textarea>
+          </div>
+          <div class="form-group">
+            <label class="label">延时发送 (秒):</label>
+            <input type="number" class="input-number" id="delay-seconds" value="0" min="0" max="300" style="width: 80px;">
           </div>
           <div class="btn-group">
-            <button class="btn btn-small btn-primary" id="test-input-btn">输入文字</button>
-            <button class="btn btn-small btn-secondary" id="test-send-btn">模拟发送</button>
-            <button class="btn btn-small btn-warning" id="test-clear-input-btn">清空输入框</button>
+            <button class="btn btn-small btn-primary" id="simulate-input-btn">模拟输入</button>
+            <button class="btn btn-small btn-secondary" id="simulate-send-btn">模拟发送</button>
+            <button class="btn btn-small btn-warning" id="clear-input-btn">清空输入框</button>
           </div>
-          <div class="debug-result" id="test-input-result">
+          <div class="debug-result" id="input-result">
             <div class="debug-empty">测试输入框交互</div>
           </div>
         </div>
 
-        <!-- 聊天内容读取 -->
+        <!-- 截图功能 -->
         <div class="debug-section">
           <div class="debug-section-header">
-            <span class="debug-section-title">聊天内容读取</span>
-            <button class="btn btn-small btn-primary" id="test-get-chat-btn">读取内容</button>
+            <span class="debug-section-title">网页截图</span>
+            <button class="btn btn-small btn-primary" id="screenshot-btn">截图到剪贴板</button>
+          </div>
+          <div class="debug-result" id="screenshot-result">
+            <div class="debug-empty">点击按钮截取当前网页并复制到剪贴板</div>
+          </div>
+        </div>
+
+        <!-- 读取内容 -->
+        <div class="debug-section">
+          <div class="debug-section-header">
+            <span class="debug-section-title">当前会话内容</span>
+            <div class="btn-group">
+              <button class="btn btn-small btn-primary" id="read-content-btn">读取内容</button>
+              <button class="btn btn-small btn-secondary" id="export-content-btn" style="display: none;">导出</button>
+              <button class="btn btn-small btn-warning" id="clear-content-btn">清空</button>
+            </div>
           </div>
           <div class="debug-info-grid">
             <div class="debug-info-item">
               <span class="debug-info-label">消息数量:</span>
-              <span class="debug-info-value" id="test-message-count">--</span>
+              <span class="debug-info-value" id="message-count">--</span>
             </div>
           </div>
-          <div class="debug-list" id="test-chat-content" style="max-height: 300px; overflow-y: auto;">
+          <div class="debug-list" id="chat-content" style="max-height: 300px; overflow-y: auto;">
             <div class="debug-empty">点击"读取内容"获取当前聊天记录</div>
           </div>
         </div>
+
       </div>
     </section>
 
-    <!-- Section 2: 环境 / API 配置 -->
-    <section class="panel collapsed" data-panel="environment">
+    <!-- Section 3: 环境 / API 配置 -->
+    <section class="panel" data-panel="environment">
       <div class="panel-header" data-toggle="environment">
         <span class="panel-icon">&#9662;</span>
         <span class="panel-title">环境 / API 配置</span>
       </div>
       <div class="panel-content" id="environment-content">
+        <!-- API 选择 -->
+        <div class="form-group" style="margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <label class="label" style="margin-bottom: 0;">当前使用的 API:</label>
+            <button class="btn btn-tiny btn-secondary" id="show-pricing-btn" title="查看价格">💰 价格</button>
+          </div>
+          <select class="input-select" id="active-api-provider" style="margin-top: 6px;">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </div>
+
         <!-- DeepSeek API 配置 -->
         <div class="api-config-section">
           <div class="api-config-header">
@@ -243,190 +206,60 @@
               <label class="label" for="deepseek-api-key">API Key:</label>
               <input type="password" class="input-text" id="deepseek-api-key" placeholder="输入 API Key">
             </div>
+            <div class="form-group">
+              <label class="label" for="deepseek-model">模型:</label>
+              <select class="input-select" id="deepseek-model">
+                <option value="deepseek-chat">deepseek-chat</option>
+                <option value="deepseek-coder">deepseek-coder</option>
+                <option value="deepseek-reasoner">deepseek-reasoner</option>
+              </select>
+            </div>
             <div class="btn-group">
               <button class="btn btn-small btn-secondary" id="save-deepseek-btn">保存</button>
               <button class="btn btn-small btn-primary" id="check-deepseek-btn">检查连接</button>
             </div>
           </div>
         </div>
-      </div>
-    </section>
 
-    <!-- Section 2: 会话 / 终端 -->
-    <section class="panel collapsed" data-panel="session">
-      <div class="panel-header" data-toggle="session">
-        <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">会话 / 终端</span>
-      </div>
-      <div class="panel-content" id="session-content">
-        <button class="btn btn-primary btn-full" id="scan-sessions-btn">扫描会话</button>
-        <div class="session-list" id="session-list">
-          <div class="session-empty">未找到会话。点击"扫描会话"来检测终端。</div>
-        </div>
-        <div class="active-session-display">
-          <label class="label">当前会话:</label>
-          <div class="active-session-info" id="active-session-info">未选择</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Section 3: 输入模拟 -->
-    <section class="panel collapsed" data-panel="input">
-      <div class="panel-header" data-toggle="input">
-        <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">输入模拟</span>
-      </div>
-      <div class="panel-content" id="input-content">
-        <textarea
-          class="input-textarea"
-          id="input-text"
-          placeholder="输入要模拟的命令..."
-          rows="4"
-        ></textarea>
-        <div class="btn-group">
-          <button class="btn btn-primary" id="preview-input-btn">预览</button>
-          <button class="btn btn-secondary" id="clear-input-btn">清空</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Section 4: API / AI 判断 -->
-    <section class="panel collapsed" data-panel="ai-judge">
-      <div class="panel-header" data-toggle="ai-judge">
-        <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">API / AI 判断</span>
-      </div>
-      <div class="panel-content" id="ai-judge-content">
-        <div class="form-group">
-          <label class="label" for="line-count">分析行数:</label>
-          <input
-            type="number"
-            class="input-number"
-            id="line-count"
-            value="20"
-            min="1"
-            max="100"
-          >
-        </div>
-        <button class="btn btn-primary btn-full" id="analyze-btn">分析会话</button>
-        <div class="ai-result" id="ai-result">
-          <div class="ai-result-empty">暂无分析结果。点击"分析会话"获取 AI 判断。</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Section: 调试工具 -->
-    <section class="panel collapsed" data-panel="debug-tools">
-      <div class="panel-header" data-toggle="debug-tools">
-        <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">调试工具</span>
-      </div>
-      <div class="panel-content" id="debug-tools-content">
-        <!-- 6.7 输出监听测试 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">输出监听测试</span>
-            <button class="btn btn-small btn-primary" id="test-output-listener-btn">测试</button>
+        <!-- OpenAI API 配置 -->
+        <div class="api-config-section">
+          <div class="api-config-header">
+            <span class="api-name">OpenAI API</span>
+            <span class="api-indicator" id="openai-status">--</span>
           </div>
-          <div class="debug-info-grid">
-            <div class="debug-info-item">
-              <span class="debug-info-label">捕获行数:</span>
-              <input type="number" class="input-number" id="output-listener-lines" value="10" min="1" max="100" style="width: 60px;">
+          <div class="api-config-form" id="openai-config-form">
+            <div class="form-group">
+              <label class="label" for="openai-base-url">Base URL:</label>
+              <input type="text" class="input-text" id="openai-base-url" placeholder="https://api.openai.com/v1">
             </div>
-          </div>
-          <div class="debug-result" id="output-listener-result">
-            <div class="debug-empty">点击"测试"捕获会话输出</div>
-          </div>
-        </div>
-
-        <!-- 6.8 等待状态检测对比 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">等待状态检测</span>
-            <button class="btn btn-small btn-primary" id="detect-waiting-btn">检测</button>
-          </div>
-          <div class="waiting-state-comparison" id="waiting-state-result">
-            <div class="debug-empty">点击"检测"分析等待状态</div>
-          </div>
-        </div>
-
-        <!-- 6.9 超时模拟 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">超时模拟</span>
-          </div>
-          <div class="timeout-controls">
-            <div class="timeout-display" id="timeout-display">
-              <span class="timeout-value">--</span>
-              <span class="timeout-label">秒</span>
+            <div class="form-group">
+              <label class="label" for="openai-api-key">API Key:</label>
+              <input type="password" class="input-text" id="openai-api-key" placeholder="输入 API Key">
+            </div>
+            <div class="form-group">
+              <label class="label" for="openai-model">模型:</label>
+              <select class="input-select" id="openai-model">
+                <option value="gpt-4o">gpt-4o</option>
+                <option value="gpt-4o-mini">gpt-4o-mini</option>
+                <option value="gpt-4-turbo">gpt-4-turbo</option>
+                <option value="gpt-4">gpt-4</option>
+                <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+              </select>
             </div>
             <div class="btn-group">
-              <button class="btn btn-small btn-primary" id="start-timeout-btn">开始 30s 倒计时</button>
-              <button class="btn btn-small btn-warning" id="stop-timeout-btn" disabled>停止</button>
+              <button class="btn btn-small btn-secondary" id="save-openai-btn">保存</button>
+              <button class="btn btn-small btn-primary" id="check-openai-btn">检查连接</button>
             </div>
           </div>
-          <div class="timeout-status" id="timeout-status">
-            <span class="timeout-status-text">未启动</span>
-          </div>
-        </div>
-
-        <!-- 6.10 危险命令测试 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">危险命令测试</span>
-          </div>
-          <div class="form-group">
-            <label class="label">输入命令:</label>
-            <input type="text" class="input-text" id="danger-command-input" placeholder="输入命令测试是否危险...">
-          </div>
-          <button class="btn btn-small btn-primary" id="check-danger-btn">检测</button>
-          <div class="danger-result" id="danger-result">
-            <div class="debug-empty">输入命令后点击"检测"</div>
-          </div>
-        </div>
-
-        <!-- 6.11 注入回滚测试 -->
-        <div class="debug-section">
-          <div class="debug-section-header">
-            <span class="debug-section-title">注入回滚测试</span>
-          </div>
-          <div class="form-group">
-            <label class="label">测试文本:</label>
-            <input type="text" class="input-text" id="rollback-test-input" value="测试注入文本 - 将被回滚">
-          </div>
-          <div class="btn-group">
-            <button class="btn btn-small btn-primary" id="inject-test-btn">注入</button>
-            <button class="btn btn-small btn-warning" id="rollback-test-btn" disabled>回滚</button>
-          </div>
-          <div class="rollback-status" id="rollback-status">
-            <div class="debug-empty">测试注入后自动回滚</div>
-          </div>
         </div>
       </div>
     </section>
 
-    <!-- Section 5: 动作模拟 -->
-    <section class="panel collapsed" data-panel="action">
-      <div class="panel-header" data-toggle="action">
-        <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">动作模拟</span>
-      </div>
-      <div class="panel-content" id="action-content">
-        <div class="action-preview" id="action-preview">
-          <div class="action-preview-empty">暂无待执行动作</div>
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-primary" id="execute-action-btn" disabled>执行</button>
-          <button class="btn btn-warning" id="cancel-action-btn" disabled>取消</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Section 6: 日志与检查器 -->
+    <!-- Section 4: 日志 -->
     <section class="panel collapsed" data-panel="logs">
       <div class="panel-header" data-toggle="logs">
         <span class="panel-icon">&#9662;</span>
-        <span class="panel-title">日志与检查器</span>
+        <span class="panel-title">日志</span>
       </div>
       <div class="panel-content" id="logs-content">
         <div class="log-viewer" id="log-viewer">

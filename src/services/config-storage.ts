@@ -4,16 +4,23 @@ export interface APIProviderConfig {
   apiKey: string;
   baseUrl: string;
   enabled: boolean;
+  model?: string; // 可选的模型名称
 }
 
 export interface AllAPIConfigs {
   deepseek: APIProviderConfig;
+  openai: APIProviderConfig;
 }
 
 const DEFAULT_CONFIGS: AllAPIConfigs = {
   deepseek: {
     apiKey: '',
     baseUrl: 'https://api.deepseek.com',
+    enabled: false,
+  },
+  openai: {
+    apiKey: '',
+    baseUrl: 'https://api.openai.com/v1',
     enabled: false,
   },
 };
@@ -30,6 +37,7 @@ export class ConfigStorage {
       const stored = result[STORAGE_KEY] as Partial<AllAPIConfigs> | undefined;
       return {
         deepseek: { ...DEFAULT_CONFIGS.deepseek, ...stored?.deepseek },
+        openai: { ...DEFAULT_CONFIGS.openai, ...stored?.openai },
       };
     } catch {
       return { ...DEFAULT_CONFIGS };
@@ -39,7 +47,7 @@ export class ConfigStorage {
   /**
    * 获取单个提供商的配置
    */
-  async get(provider: 'deepseek'): Promise<APIProviderConfig> {
+  async get(provider: 'deepseek' | 'openai'): Promise<APIProviderConfig> {
     const all = await this.getAll();
     return all[provider];
   }
@@ -47,7 +55,7 @@ export class ConfigStorage {
   /**
    * 保存单个提供商的配置
    */
-  async save(provider: 'deepseek', config: Partial<APIProviderConfig>): Promise<void> {
+  async save(provider: 'deepseek' | 'openai', config: Partial<APIProviderConfig>): Promise<void> {
     const all = await this.getAll();
     all[provider] = { ...all[provider], ...config };
     await chrome.storage.local.set({ [STORAGE_KEY]: all });

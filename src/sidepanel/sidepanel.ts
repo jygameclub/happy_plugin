@@ -1,7 +1,7 @@
 // src/sidepanel/sidepanel.ts
 
 import type { Session } from '../types/session';
-import type { AIJudgeOutput, APIStatus } from '../types/ai-judge';
+import type { APIStatus } from '../types/ai-judge';
 import type { Message } from '../types/messages';
 import { ConfigStorage, type APIProviderConfig } from '../services/config-storage';
 
@@ -12,40 +12,40 @@ interface LogEntry {
   type?: 'info' | 'success' | 'error';
 }
 
-interface PendingAction {
-  type: 'input' | 'execute';
-  sessionId: string;
-  command: string;
-}
-
-interface TimeoutState {
-  intervalId: number | null;
+interface DelaySendState {
+  timerId: number | null;
   remaining: number;
-  isRunning: boolean;
+  text: string;
+  isActive: boolean;
 }
 
-interface RollbackState {
-  previousValue: string | null;
-  sessionId: string | null;
-  isInjected: boolean;
+type SessionRole = 'leader' | 'executor';
+
+interface ChatMessageData {
+  role: string;
+  content: string;
+  index: number;
 }
+
+type APIProvider = 'deepseek' | 'openai';
 
 class DebugConsole {
   private sessions: Session[] = [];
-  private activeSessionId: string | null = null;
-  private pendingAction: PendingAction | null = null;
   private logs: LogEntry[] = [];
   private configStorage: ConfigStorage;
-  private currentScreenshot: string | null = null;
-  private timeoutState: TimeoutState = { intervalId: null, remaining: 30, isRunning: false };
-  private rollbackState: RollbackState = { previousValue: null, sessionId: null, isInjected: false };
+  private delaySendState: DelaySendState = { timerId: null, remaining: 0, text: '', isActive: false };
+  private sessionRoles: Map<string, SessionRole> = new Map();
+  private chatMessages: ChatMessageData[] = [];
+  private activeProvider: APIProvider = 'deepseek';
+  private lastScreenshotDataUrl: string | null = null;
 
   constructor() {
     this.configStorage = new ConfigStorage();
     this.initPanelToggles();
     this.initEventListeners();
-    this.loadInitialState();
+    this.initResizeHandles();
     this.loadAPIConfigs();
+    this.loadSessionRoles();
     this.log('信息', '调试控制台已初始化');
   }
 
@@ -66,7 +66,19 @@ class DebugConsole {
   // ==================== Event Listeners ====================
 
   private initEventListeners(): void {
-    // Environment / API Config section
+    // API Provider 选择
+    document.getElementById('active-api-provider')?.addEventListener('change', (e) => {
+      this.activeProvider = (e.target as HTMLSelectElement).value as APIProvider;
+      this.saveActiveProvider();
+      this.log('配置', `已切换到 ${this.activeProvider.toUpperCase()} API`);
+    });
+
+    // 显示价格按钮
+    document.getElementById('show-pricing-btn')?.addEventListener('click', () => {
+      this.showPricingModal();
+    });
+
+    // Environment / API Config section - DeepSeek
     document.getElementById('save-deepseek-btn')?.addEventListener('click', () => {
       this.saveAPIConfig('deepseek');
     });
@@ -74,11 +86,25 @@ class DebugConsole {
       this.checkAPI('deepseek');
     });
 
-    // Auto-save on blur for API config inputs
+    // Environment / API Config section - OpenAI
+    document.getElementById('save-openai-btn')?.addEventListener('click', () => {
+      this.saveAPIConfig('openai');
+    });
+    document.getElementById('check-openai-btn')?.addEventListener('click', () => {
+      this.checkAPI('openai');
+    });
+
+    // Auto-save on blur for API config inputs - DeepSeek
     const baseUrlEl = document.getElementById('deepseek-base-url');
     const apiKeyEl = document.getElementById('deepseek-api-key');
     baseUrlEl?.addEventListener('blur', () => this.saveAPIConfig('deepseek'));
     apiKeyEl?.addEventListener('blur', () => this.saveAPIConfig('deepseek'));
+
+    // Auto-save on blur for API config inputs - OpenAI
+    const openaiBaseUrlEl = document.getElementById('openai-base-url');
+    const openaiApiKeyEl = document.getElementById('openai-api-key');
+    openaiBaseUrlEl?.addEventListener('blur', () => this.saveAPIConfig('openai'));
+    openaiApiKeyEl?.addEventListener('blur', () => this.saveAPIConfig('openai'));
 
     // API Test Chat section
     document.getElementById('chat-send-btn')?.addEventListener('click', () => {
@@ -93,32 +119,6 @@ class DebugConsole {
       this.clearChatMessages();
     });
 
-    // Session section
-    document.getElementById('scan-sessions-btn')?.addEventListener('click', () => {
-      this.scanSessions();
-    });
-
-    // Input section
-    document.getElementById('preview-input-btn')?.addEventListener('click', () => {
-      this.previewInput();
-    });
-    document.getElementById('clear-input-btn')?.addEventListener('click', () => {
-      this.clearInput();
-    });
-
-    // AI Judge section
-    document.getElementById('analyze-btn')?.addEventListener('click', () => {
-      this.analyzeSession();
-    });
-
-    // Action section
-    document.getElementById('execute-action-btn')?.addEventListener('click', () => {
-      this.executeAction();
-    });
-    document.getElementById('cancel-action-btn')?.addEventListener('click', () => {
-      this.cancelAction();
-    });
-
     // Logs section
     document.getElementById('export-logs-btn')?.addEventListener('click', () => {
       this.exportSnapshot();
@@ -127,75 +127,43 @@ class DebugConsole {
       this.clearLogs();
     });
 
-    // Page Debug section
-    document.getElementById('refresh-page-info-btn')?.addEventListener('click', () => {
-      this.refreshPageInfo();
+    // Happy Debug section
+    document.getElementById('get-sessions-btn')?.addEventListener('click', () => {
+      this.getSessions();
     });
-    document.getElementById('scan-structure-btn')?.addEventListener('click', () => {
-      this.scanPageStructure();
+    document.getElementById('simulate-input-btn')?.addEventListener('click', () => {
+      this.simulateInput();
     });
-    document.getElementById('scan-sessions-list-btn')?.addEventListener('click', () => {
-      this.scanSessionsList();
+    document.getElementById('simulate-send-btn')?.addEventListener('click', () => {
+      this.simulateSendWithDelay();
     });
-    document.getElementById('scan-content-btn')?.addEventListener('click', () => {
-      this.scanContentState();
+    document.getElementById('clear-input-btn')?.addEventListener('click', () => {
+      this.clearInputBox();
     });
-    document.getElementById('highlight-element-btn')?.addEventListener('click', () => {
-      this.highlightElement();
+    document.getElementById('ai-analysis-btn')?.addEventListener('click', () => {
+      this.analyzeWithAI();
     });
-    document.getElementById('click-element-btn')?.addEventListener('click', () => {
-      this.clickElement();
+    // AI 分析区域 provider 切换时更新模型列表
+    document.getElementById('ai-analysis-provider')?.addEventListener('change', (e) => {
+      this.updateAIAnalysisModelOptions((e.target as HTMLSelectElement).value as APIProvider);
     });
-    document.getElementById('get-element-info-btn')?.addEventListener('click', () => {
-      this.getElementInfo();
+    document.getElementById('screenshot-btn')?.addEventListener('click', () => {
+      this.takeScreenshot();
     });
-
-    // Screenshot section
-    document.getElementById('capture-screenshot-btn')?.addEventListener('click', () => {
-      this.captureScreenshot();
+    document.getElementById('view-screenshot-btn')?.addEventListener('click', () => {
+      this.showScreenshotPreview();
     });
-    document.getElementById('analyze-screenshot-btn')?.addEventListener('click', () => {
-      this.analyzeScreenshot();
+    document.getElementById('read-content-btn')?.addEventListener('click', () => {
+      this.readChatContent();
     });
-
-    // Happy test section
-    document.getElementById('test-get-sessions-btn')?.addEventListener('click', () => {
-      this.testGetSessions();
+    document.getElementById('clear-content-btn')?.addEventListener('click', () => {
+      this.clearChatContent();
     });
-    document.getElementById('test-input-btn')?.addEventListener('click', () => {
-      this.testInputText();
+    document.getElementById('export-content-btn')?.addEventListener('click', () => {
+      this.exportChatContent();
     });
-    document.getElementById('test-send-btn')?.addEventListener('click', () => {
-      this.testSimulateSend();
-    });
-    document.getElementById('test-clear-input-btn')?.addEventListener('click', () => {
-      this.testClearInput();
-    });
-    document.getElementById('test-get-chat-btn')?.addEventListener('click', () => {
-      this.testGetChatMessages();
-    });
-
-    // Debug tools section
-    document.getElementById('test-output-listener-btn')?.addEventListener('click', () => {
-      this.testOutputListener();
-    });
-    document.getElementById('detect-waiting-btn')?.addEventListener('click', () => {
-      this.detectWaitingState();
-    });
-    document.getElementById('start-timeout-btn')?.addEventListener('click', () => {
-      this.startTimeoutSimulation();
-    });
-    document.getElementById('stop-timeout-btn')?.addEventListener('click', () => {
-      this.stopTimeoutSimulation();
-    });
-    document.getElementById('check-danger-btn')?.addEventListener('click', () => {
-      this.checkDangerousCommand();
-    });
-    document.getElementById('inject-test-btn')?.addEventListener('click', () => {
-      this.injectTestText();
-    });
-    document.getElementById('rollback-test-btn')?.addEventListener('click', () => {
-      this.rollbackTestText();
+    document.getElementById('cancel-delay-send-btn')?.addEventListener('click', () => {
+      this.cancelDelaySend();
     });
   }
 
@@ -280,21 +248,6 @@ class DebugConsole {
     logViewer.scrollTop = logViewer.scrollHeight;
   }
 
-  // ==================== Initial State ====================
-
-  private async loadInitialState(): Promise<void> {
-    const response = await this.sendToBackground<{
-      sessions: Session[];
-      activeSessionId: string | null;
-    }>({ type: 'GET_STATE' });
-
-    if (response) {
-      this.sessions = response.sessions || [];
-      this.activeSessionId = response.activeSessionId;
-      this.renderSessionList();
-    }
-  }
-
   // ==================== API Config ====================
 
   private async loadAPIConfigs(): Promise<void> {
@@ -303,15 +256,100 @@ class DebugConsole {
     // 加载 DeepSeek 配置
     const deepseekBaseUrl = document.getElementById('deepseek-base-url') as HTMLInputElement;
     const deepseekApiKey = document.getElementById('deepseek-api-key') as HTMLInputElement;
+    const deepseekModel = document.getElementById('deepseek-model') as HTMLSelectElement;
     if (deepseekBaseUrl) deepseekBaseUrl.value = configs.deepseek.baseUrl;
     if (deepseekApiKey) deepseekApiKey.value = configs.deepseek.apiKey;
+    if (deepseekModel && configs.deepseek.model) deepseekModel.value = configs.deepseek.model;
+
+    // 加载 OpenAI 配置
+    const openaiBaseUrl = document.getElementById('openai-base-url') as HTMLInputElement;
+    const openaiApiKey = document.getElementById('openai-api-key') as HTMLInputElement;
+    const openaiModel = document.getElementById('openai-model') as HTMLSelectElement;
+    if (openaiBaseUrl) openaiBaseUrl.value = configs.openai.baseUrl;
+    if (openaiApiKey) openaiApiKey.value = configs.openai.apiKey;
+    if (openaiModel && configs.openai.model) openaiModel.value = configs.openai.model;
+
+    // 加载当前选择的 provider
+    await this.loadActiveProvider();
+
+    // 同步 AI 分析区域的 provider 和 model 选择
+    this.syncAIAnalysisSelectors();
 
     this.log('配置', '已加载 API 配置');
   }
 
-  private async saveAPIConfig(provider: 'deepseek'): Promise<void> {
+  /**
+   * 同步 AI 分析区域的 API 和模型选择
+   */
+  private syncAIAnalysisSelectors(): void {
+    const providerEl = document.getElementById('ai-analysis-provider') as HTMLSelectElement;
+    if (providerEl) {
+      providerEl.value = this.activeProvider;
+    }
+    this.updateAIAnalysisModelOptions(this.activeProvider);
+  }
+
+  /**
+   * 根据选择的 provider 更新 AI 分析区域的模型选项
+   */
+  private updateAIAnalysisModelOptions(provider: APIProvider): void {
+    const modelEl = document.getElementById('ai-analysis-model') as HTMLSelectElement;
+    if (!modelEl) return;
+
+    // 获取当前配置中保存的模型
+    const configModelEl = document.getElementById(`${provider}-model`) as HTMLSelectElement;
+    const savedModel = configModelEl?.value;
+
+    // 根据 provider 更新选项
+    if (provider === 'deepseek') {
+      modelEl.innerHTML = `
+        <option value="deepseek-chat">deepseek-chat</option>
+        <option value="deepseek-coder">deepseek-coder</option>
+        <option value="deepseek-reasoner">deepseek-reasoner</option>
+      `;
+    } else {
+      modelEl.innerHTML = `
+        <option value="gpt-4o">gpt-4o</option>
+        <option value="gpt-4o-mini">gpt-4o-mini</option>
+        <option value="gpt-4-turbo">gpt-4-turbo</option>
+        <option value="gpt-4">gpt-4</option>
+        <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+      `;
+    }
+
+    // 如果有保存的模型，选中它
+    if (savedModel) {
+      modelEl.value = savedModel;
+    }
+  }
+
+  private async loadActiveProvider(): Promise<void> {
+    try {
+      const result = await chrome.storage.local.get('activeAPIProvider');
+      if (result.activeAPIProvider) {
+        this.activeProvider = result.activeAPIProvider as APIProvider;
+      }
+      const selectEl = document.getElementById('active-api-provider') as HTMLSelectElement;
+      if (selectEl) {
+        selectEl.value = this.activeProvider;
+      }
+    } catch (error) {
+      console.error('[Happy Debug] loadActiveProvider error:', error);
+    }
+  }
+
+  private async saveActiveProvider(): Promise<void> {
+    try {
+      await chrome.storage.local.set({ activeAPIProvider: this.activeProvider });
+    } catch (error) {
+      console.error('[Happy Debug] saveActiveProvider error:', error);
+    }
+  }
+
+  private async saveAPIConfig(provider: APIProvider): Promise<void> {
     const baseUrlEl = document.getElementById(`${provider}-base-url`) as HTMLInputElement;
     const apiKeyEl = document.getElementById(`${provider}-api-key`) as HTMLInputElement;
+    const modelEl = document.getElementById(`${provider}-model`) as HTMLSelectElement;
     const saveBtn = document.getElementById(`save-${provider}-btn`);
 
     if (!baseUrlEl || !apiKeyEl) return;
@@ -319,6 +357,7 @@ class DebugConsole {
     const config: Partial<APIProviderConfig> = {
       baseUrl: baseUrlEl.value.trim(),
       apiKey: apiKeyEl.value.trim(),
+      model: modelEl?.value || undefined,
       enabled: true,
     };
 
@@ -346,9 +385,10 @@ class DebugConsole {
     }
   }
 
-  private getAPIConfigFromForm(provider: 'deepseek'): { apiKey: string; baseUrl: string } | null {
+  private getAPIConfigFromForm(provider: APIProvider): { apiKey: string; baseUrl: string; model?: string } | null {
     const baseUrlEl = document.getElementById(`${provider}-base-url`) as HTMLInputElement;
     const apiKeyEl = document.getElementById(`${provider}-api-key`) as HTMLInputElement;
+    const modelEl = document.getElementById(`${provider}-model`) as HTMLSelectElement;
 
     if (!baseUrlEl || !apiKeyEl) return null;
 
@@ -359,12 +399,24 @@ class DebugConsole {
       return null;
     }
 
-    return { baseUrl, apiKey };
+    return { baseUrl, apiKey, model: modelEl?.value || undefined };
+  }
+
+  /**
+   * 获取当前选择的 API 配置
+   */
+  private getActiveAPIConfig(): { provider: APIProvider; apiKey: string; baseUrl: string; model?: string } | null {
+    const config = this.getAPIConfigFromForm(this.activeProvider);
+    if (!config) return null;
+    return {
+      provider: this.activeProvider,
+      ...config,
+    };
   }
 
   // ==================== API Check ====================
 
-  async checkAPI(provider: 'deepseek'): Promise<void> {
+  async checkAPI(provider: APIProvider): Promise<void> {
     const statusEl = document.getElementById(`${provider}-status`);
     const btn = document.getElementById(`check-${provider}-btn`);
 
@@ -426,11 +478,11 @@ class DebugConsole {
     const message = inputEl.value.trim();
     if (!message) return;
 
-    const formConfig = this.getAPIConfigFromForm('deepseek');
+    const activeConfig = this.getActiveAPIConfig();
 
-    if (!formConfig) {
-      this.addChatMessage('请先配置 DeepSeek 的 API Key 和 Base URL', 'error');
-      this.log('聊天', 'DeepSeek 未配置', 'error');
+    if (!activeConfig) {
+      this.addChatMessage(`请先配置 ${this.activeProvider.toUpperCase()} 的 API Key 和 Base URL`, 'error');
+      this.log('聊天', `${this.activeProvider.toUpperCase()} 未配置`, 'error');
       return;
     }
 
@@ -439,7 +491,7 @@ class DebugConsole {
     inputEl.value = '';
 
     if (sendBtn) sendBtn.classList.add('loading');
-    this.log('聊天', `发送到 DeepSeek: ${message.substring(0, 30)}...`);
+    this.log('聊天', `发送到 ${this.activeProvider.toUpperCase()}: ${message.substring(0, 30)}...`);
 
     const response = await this.sendToBackground<{
       success: boolean;
@@ -448,12 +500,13 @@ class DebugConsole {
       latency?: number;
     }>({
       type: 'CHAT_TEST',
-      provider: 'deepseek',
+      provider: this.activeProvider,
       message,
       config: {
-        provider: 'deepseek',
-        apiKey: formConfig.apiKey,
-        baseUrl: formConfig.baseUrl,
+        provider: this.activeProvider,
+        apiKey: activeConfig.apiKey,
+        baseUrl: activeConfig.baseUrl,
+        model: activeConfig.model,
       },
     });
 
@@ -461,10 +514,10 @@ class DebugConsole {
 
     if (response?.success && response.content) {
       this.addChatMessage(response.content, 'assistant', response.latency);
-      this.log('聊天', `DeepSeek 响应成功 (${response.latency}ms)`, 'success');
+      this.log('聊天', `${this.activeProvider.toUpperCase()} 响应成功 (${response.latency}ms)`, 'success');
     } else {
       this.addChatMessage(response?.error || '请求失败', 'error');
-      this.log('聊天', `DeepSeek 失败: ${response?.error || '未知错误'}`, 'error');
+      this.log('聊天', `${this.activeProvider.toUpperCase()} 失败: ${response?.error || '未知错误'}`, 'error');
     }
   }
 
@@ -497,322 +550,6 @@ class DebugConsole {
       messagesEl.innerHTML = '<div class="chat-empty">发送消息测试 API 是否正常工作</div>';
     }
     this.log('聊天', '聊天记录已清空');
-  }
-
-  // ==================== Session Management ====================
-
-  async scanSessions(): Promise<void> {
-    const btn = document.getElementById('scan-sessions-btn');
-    if (btn) btn.classList.add('loading');
-
-    this.log('扫描', '正在扫描终端会话...');
-
-    const response = await this.sendToContent<{ sessions: Session[] }>({
-      type: 'SCAN_SESSIONS',
-    });
-
-    if (btn) btn.classList.remove('loading');
-
-    if (response?.sessions) {
-      this.sessions = response.sessions;
-      await this.sendToBackground({
-        type: 'SET_SESSIONS',
-        sessions: this.sessions,
-      });
-      this.renderSessionList();
-      this.log('扫描', `找到 ${this.sessions.length} 个会话`, 'success');
-    } else {
-      this.log('扫描', '未找到会话或扫描失败', 'error');
-    }
-  }
-
-  renderSessionList(): void {
-    const listEl = document.getElementById('session-list');
-    if (!listEl) return;
-
-    if (this.sessions.length === 0) {
-      listEl.innerHTML = '<div class="session-empty">未找到会话。点击"扫描会话"来检测终端。</div>';
-      this.updateActiveSessionDisplay();
-      return;
-    }
-
-    listEl.innerHTML = this.sessions
-      .map(
-        (session) => `
-        <div class="session-item ${session.sessionId === this.activeSessionId ? 'active' : ''}"
-             data-session-id="${session.sessionId}">
-          <span class="session-title">${this.escapeHtml(session.title)}</span>
-          <span class="session-visibility">${session.visible ? '可见' : '隐藏'}</span>
-        </div>
-      `
-      )
-      .join('');
-
-    // Add click handlers
-    listEl.querySelectorAll('.session-item').forEach((item) => {
-      item.addEventListener('click', () => {
-        const sessionId = item.getAttribute('data-session-id');
-        if (sessionId) {
-          this.switchSession(sessionId);
-        }
-      });
-    });
-
-    this.updateActiveSessionDisplay();
-  }
-
-  async switchSession(sessionId: string): Promise<void> {
-    this.activeSessionId = sessionId;
-    await this.sendToBackground({
-      type: 'SET_ACTIVE_SESSION',
-      sessionId,
-    });
-    await this.sendToContent({
-      type: 'SWITCH_SESSION',
-      sessionId,
-    });
-
-    this.renderSessionList();
-    const session = this.sessions.find((s) => s.sessionId === sessionId);
-    this.log('会话', `已切换到: ${session?.title || sessionId}`, 'success');
-  }
-
-  private updateActiveSessionDisplay(): void {
-    const infoEl = document.getElementById('active-session-info');
-    if (!infoEl) return;
-
-    if (this.activeSessionId) {
-      const session = this.sessions.find((s) => s.sessionId === this.activeSessionId);
-      infoEl.textContent = session?.title || this.activeSessionId;
-    } else {
-      infoEl.textContent = '未选择';
-    }
-  }
-
-  // ==================== Input Simulation ====================
-
-  async previewInput(): Promise<void> {
-    const textareaEl = document.getElementById('input-text') as HTMLTextAreaElement;
-    if (!textareaEl) return;
-
-    const text = textareaEl.value.trim();
-    if (!text) {
-      this.log('输入', '未提供输入文本', 'error');
-      return;
-    }
-
-    if (!this.activeSessionId) {
-      this.log('输入', '未选择活动会话', 'error');
-      return;
-    }
-
-    this.log('输入', `预览: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
-
-    await this.sendToContent({
-      type: 'PREVIEW_INPUT',
-      sessionId: this.activeSessionId,
-      text,
-    });
-
-    // Set up pending action
-    this.pendingAction = {
-      type: 'input',
-      sessionId: this.activeSessionId,
-      command: text,
-    };
-    this.updateActionPreview();
-  }
-
-  async clearInput(): Promise<void> {
-    const textareaEl = document.getElementById('input-text') as HTMLTextAreaElement;
-    if (textareaEl) {
-      textareaEl.value = '';
-    }
-
-    if (this.activeSessionId) {
-      await this.sendToContent({
-        type: 'CLEAR_PREVIEW',
-        sessionId: this.activeSessionId,
-      });
-    }
-
-    this.pendingAction = null;
-    this.updateActionPreview();
-    this.log('输入', '输入已清空');
-  }
-
-  // ==================== AI Judge ====================
-
-  async analyzeSession(): Promise<void> {
-    if (!this.activeSessionId) {
-      this.log('分析', '未选择活动会话', 'error');
-      return;
-    }
-
-    const lineCountEl = document.getElementById('line-count') as HTMLInputElement;
-    const lines = parseInt(lineCountEl?.value || '20', 10);
-
-    const btn = document.getElementById('analyze-btn');
-    if (btn) btn.classList.add('loading');
-
-    this.log('分析', `正在分析最后 ${lines} 行...`);
-
-    // Get session output from content script
-    const outputResponse = await this.sendToContent<{ output: string[] }>({
-      type: 'GET_SESSION_OUTPUT',
-      sessionId: this.activeSessionId,
-      lines,
-    });
-
-    if (!outputResponse?.output) {
-      if (btn) btn.classList.remove('loading');
-      this.log('分析', '获取会话输出失败', 'error');
-      this.renderAIResult(null);
-      return;
-    }
-
-    // Send to background for AI analysis (will be implemented in Task 9)
-    const response = await this.sendToBackground<{ result: AIJudgeOutput }>({
-      type: 'ANALYZE_SESSION',
-      sessionId: this.activeSessionId,
-      output: outputResponse.output,
-    });
-
-    if (btn) btn.classList.remove('loading');
-
-    if (response?.result) {
-      this.renderAIResult(response.result);
-      this.log(
-        '分析',
-        `角色: ${response.result.role}, 状态: ${response.result.state}, 置信度: ${Math.round(response.result.confidence * 100)}%`,
-        'success'
-      );
-    } else {
-      this.renderAIResult(null);
-      this.log('分析', '分析失败或未实现', 'error');
-    }
-  }
-
-  renderAIResult(result: AIJudgeOutput | null): void {
-    const resultEl = document.getElementById('ai-result');
-    if (!resultEl) return;
-
-    if (!result) {
-      resultEl.innerHTML = '<div class="ai-result-empty">暂无分析结果。点击"分析会话"获取 AI 判断。</div>';
-      return;
-    }
-
-    const roleClass = `role-${result.role.toLowerCase()}`;
-    const stateClass = `state-${result.state.toLowerCase().replace('_', '-')}`;
-    const confidencePercent = Math.round(result.confidence * 100);
-
-    resultEl.innerHTML = `
-      <div class="ai-result-data">
-        <div class="ai-result-row">
-          <span class="ai-result-label">角色:</span>
-          <span class="ai-result-value ${roleClass}">${result.role}</span>
-        </div>
-        <div class="ai-result-row">
-          <span class="ai-result-label">状态:</span>
-          <span class="ai-result-value ${stateClass}">${result.state}</span>
-        </div>
-        <div class="ai-result-row">
-          <span class="ai-result-label">置信度:</span>
-          <span class="ai-result-value">${confidencePercent}%</span>
-        </div>
-      </div>
-    `;
-  }
-
-  // ==================== Action Simulation ====================
-
-  updateActionPreview(): void {
-    const previewEl = document.getElementById('action-preview');
-    const executeBtn = document.getElementById('execute-action-btn') as HTMLButtonElement;
-    const cancelBtn = document.getElementById('cancel-action-btn') as HTMLButtonElement;
-
-    if (!previewEl) return;
-
-    if (!this.pendingAction) {
-      previewEl.innerHTML = '<div class="action-preview-empty">暂无待执行动作</div>';
-      if (executeBtn) executeBtn.disabled = true;
-      if (cancelBtn) cancelBtn.disabled = true;
-      return;
-    }
-
-    previewEl.innerHTML = `
-      <div class="action-preview-command">${this.escapeHtml(this.pendingAction.command)}</div>
-    `;
-    if (executeBtn) executeBtn.disabled = false;
-    if (cancelBtn) cancelBtn.disabled = false;
-  }
-
-  async executeAction(): Promise<void> {
-    if (!this.pendingAction) {
-      this.log('动作', '无待执行动作', 'error');
-      return;
-    }
-
-    // 检查是否为危险命令
-    const dangerCheck = await this.sendToBackground<{
-      success: boolean;
-      data: { isDangerous: boolean; description: string | null };
-    }>({
-      type: 'CHECK_DANGEROUS',
-      command: this.pendingAction.command,
-    });
-
-    if (dangerCheck?.data?.isDangerous) {
-      this.log('动作', `危险命令被拦截: ${dangerCheck.data.description}`, 'error');
-      alert(`危险命令被拦截!\n\n原因: ${dangerCheck.data.description}\n\n命令: ${this.pendingAction.command}`);
-      return;
-    }
-
-    // 显示确认弹窗
-    const confirmed = await this.showConfirmationModal(this.pendingAction);
-
-    if (!confirmed) {
-      this.log('动作', '用户取消执行', 'info');
-      return;
-    }
-
-    this.log('动作', `正在执行: "${this.pendingAction.command.substring(0, 50)}..."`);
-
-    // Send execute command to content script
-    await this.sendToContent({
-      type: 'PREVIEW_INPUT',
-      sessionId: this.pendingAction.sessionId,
-      text: this.pendingAction.command,
-    });
-
-    // 模拟按下 Enter 键发送
-    await this.sendToContent({
-      type: 'SIMULATE_SEND',
-    });
-
-    this.log('动作', '动作执行成功', 'success');
-
-    this.pendingAction = null;
-    this.updateActionPreview();
-    this.clearInput();
-  }
-
-  async cancelAction(): Promise<void> {
-    if (!this.pendingAction) {
-      return;
-    }
-
-    this.log('动作', '动作已取消');
-
-    if (this.pendingAction.sessionId) {
-      await this.sendToContent({
-        type: 'CLEAR_PREVIEW',
-        sessionId: this.pendingAction.sessionId,
-      });
-    }
-
-    this.pendingAction = null;
-    this.updateActionPreview();
   }
 
   // ==================== Logs Export ====================
@@ -852,396 +589,42 @@ class DebugConsole {
     this.log('日志', '日志已清空');
   }
 
-  // ==================== Page Debug ====================
+  // ==================== Session Roles ====================
 
-  private async refreshPageInfo(): Promise<void> {
-    const btn = document.getElementById('refresh-page-info-btn');
-    if (btn) btn.classList.add('loading');
-
-    this.log('页面', '正在获取页面信息...');
-
-    const response = await this.sendToContent<{
-      success: boolean;
-      data: { url: string; title: string; domain: string };
-    }>({ type: 'GET_PAGE_INFO' });
-
-    if (btn) btn.classList.remove('loading');
-
-    console.log('[Happy Debug] refreshPageInfo response:', response);
-
-    if (response?.success && response.data) {
-      const urlEl = document.getElementById('page-url');
-      const titleEl = document.getElementById('page-title');
-
-      if (urlEl) urlEl.textContent = response.data.url.substring(0, 50) + (response.data.url.length > 50 ? '...' : '');
-      if (titleEl) titleEl.textContent = response.data.title.substring(0, 30) + (response.data.title.length > 30 ? '...' : '');
-
-      this.log('页面', `域名: ${response.data.domain}`, 'success');
-    } else {
-      this.log('页面', `获取页面信息失败 (response: ${JSON.stringify(response)})`, 'error');
+  private async loadSessionRoles(): Promise<void> {
+    try {
+      const result = await chrome.storage.local.get('sessionRoles');
+      if (result.sessionRoles) {
+        this.sessionRoles = new Map(Object.entries(result.sessionRoles) as [string, SessionRole][]);
+      }
+    } catch (error) {
+      console.error('[Happy Debug] loadSessionRoles error:', error);
     }
   }
 
-  private async scanPageStructure(): Promise<void> {
-    const btn = document.getElementById('scan-structure-btn');
-    if (btn) btn.classList.add('loading');
-
-    this.log('页面', '正在扫描页面结构...');
-
-    const response = await this.sendToContent<{
-      success: boolean;
-      data: {
-        sidebar: { exists: boolean; selector: string | null; width: number; items: number };
-        mainContent: { exists: boolean; selector: string | null; width: number; type: string };
-        rightPanel: { exists: boolean; selector: string | null; width: number };
-      };
-    }>({ type: 'ANALYZE_PAGE_STRUCTURE' });
-
-    if (btn) btn.classList.remove('loading');
-
-    const structureEl = document.getElementById('page-structure');
-    if (!structureEl) return;
-
-    if (response?.success && response.data) {
-      const { sidebar, mainContent, rightPanel } = response.data;
-      structureEl.innerHTML = `
-        <div class="debug-structure-item">
-          <span class="debug-structure-label">左侧边栏:</span>
-          <span class="debug-structure-value ${sidebar.exists ? 'found' : 'not-found'}">
-            ${sidebar.exists ? `找到 (${sidebar.width}px, ${sidebar.items} 项)` : '未找到'}
-          </span>
-        </div>
-        <div class="debug-structure-item">
-          <span class="debug-structure-label">主内容区:</span>
-          <span class="debug-structure-value ${mainContent.exists ? 'found' : 'not-found'}">
-            ${mainContent.exists ? `找到 (${mainContent.width}px, ${mainContent.type})` : '未找到'}
-          </span>
-        </div>
-        <div class="debug-structure-item">
-          <span class="debug-structure-label">右侧面板:</span>
-          <span class="debug-structure-value ${rightPanel.exists ? 'found' : 'not-found'}">
-            ${rightPanel.exists ? `找到 (${rightPanel.width}px)` : '未找到'}
-          </span>
-        </div>
-      `;
-      this.log('页面', '页面结构扫描完成', 'success');
-    } else {
-      structureEl.innerHTML = '<div class="debug-empty">扫描失败</div>';
-      this.log('页面', '扫描页面结构失败', 'error');
-    }
+  private async saveSessionRole(sessionId: string, role: SessionRole): Promise<void> {
+    this.sessionRoles.set(sessionId, role);
+    const roles = Object.fromEntries(this.sessionRoles);
+    await chrome.storage.local.set({ sessionRoles: roles });
+    this.log('角色', `已设置为 ${role === 'leader' ? '主导方' : '执行方'}`, 'success');
   }
 
-  private async scanSessionsList(): Promise<void> {
-    const btn = document.getElementById('scan-sessions-list-btn');
-    if (btn) btn.classList.add('loading');
+  private async clearSessionRole(sessionId: string): Promise<void> {
+    this.sessionRoles.delete(sessionId);
+    const roles = Object.fromEntries(this.sessionRoles);
+    await chrome.storage.local.set({ sessionRoles: roles });
+    this.log('角色', '已清除角色', 'info');
+  }
 
-    this.log('页面', '正在获取会话列表...');
+  // ==================== Happy Debug - Sessions ====================
 
-    const response = await this.sendToContent<{
-      success: boolean;
-      data: Array<{ id: string; title: string; active: boolean; selector: string }>;
-    }>({ type: 'GET_SESSIONS_LIST' });
-
-    if (btn) btn.classList.remove('loading');
-
+  private async getSessions(): Promise<void> {
+    const btn = document.getElementById('get-sessions-btn');
+    const countEl = document.getElementById('session-count');
     const listEl = document.getElementById('sessions-list');
-    if (!listEl) return;
-
-    if (response?.success && response.data && response.data.length > 0) {
-      listEl.innerHTML = response.data.map((item) => `
-        <div class="debug-list-item ${item.active ? 'active' : ''}">
-          <span class="debug-list-title">${this.escapeHtml(item.title)}</span>
-          <span class="debug-list-badge">${item.active ? '活动' : ''}</span>
-        </div>
-      `).join('');
-      this.log('页面', `找到 ${response.data.length} 个会话`, 'success');
-    } else {
-      listEl.innerHTML = '<div class="debug-empty">未找到会话列表</div>';
-      this.log('页面', '未找到会话列表', 'error');
-    }
-  }
-
-  private async scanContentState(): Promise<void> {
-    const btn = document.getElementById('scan-content-btn');
-    if (btn) btn.classList.add('loading');
-
-    this.log('页面', '正在检测内容区状态...');
-
-    const response = await this.sendToContent<{
-      success: boolean;
-      data: {
-        type: string;
-        status: string;
-        hasInput: boolean;
-        hasMessages: boolean;
-      };
-    }>({ type: 'GET_CONTENT_STATE' });
-
-    if (btn) btn.classList.remove('loading');
-
-    if (response?.success && response.data) {
-      const typeEl = document.getElementById('content-type');
-      const statusEl = document.getElementById('content-status');
-
-      const typeMap: Record<string, string> = {
-        chat: '聊天',
-        code: '代码',
-        settings: '设置',
-        empty: '空',
-        unknown: '未知',
-      };
-
-      const statusMap: Record<string, string> = {
-        idle: '空闲',
-        loading: '加载中',
-        streaming: '流式输出',
-        error: '错误',
-        empty: '空',
-        unknown: '未知',
-      };
-
-      if (typeEl) typeEl.textContent = typeMap[response.data.type] || response.data.type;
-      if (statusEl) statusEl.textContent = statusMap[response.data.status] || response.data.status;
-
-      this.log('页面', `内容类型: ${typeMap[response.data.type]}, 状态: ${statusMap[response.data.status]}`, 'success');
-    } else {
-      this.log('页面', '检测内容区状态失败', 'error');
-    }
-  }
-
-  private async highlightElement(): Promise<void> {
-    const selectorEl = document.getElementById('element-selector') as HTMLInputElement;
-    const selector = selectorEl?.value.trim();
-
-    if (!selector) {
-      this.log('元素', '请输入 CSS 选择器', 'error');
-      return;
-    }
-
-    this.log('元素', `高亮元素: ${selector}`);
-
-    const response = await this.sendToContent<{ success: boolean }>({
-      type: 'HIGHLIGHT_ELEMENT',
-      selector,
-      duration: 2000,
-    });
-
-    if (response?.success) {
-      this.log('元素', '元素已高亮', 'success');
-    } else {
-      this.log('元素', '未找到元素', 'error');
-    }
-  }
-
-  private async clickElement(): Promise<void> {
-    const selectorEl = document.getElementById('element-selector') as HTMLInputElement;
-    const selector = selectorEl?.value.trim();
-
-    if (!selector) {
-      this.log('元素', '请输入 CSS 选择器', 'error');
-      return;
-    }
-
-    this.log('元素', `点击元素: ${selector}`);
-
-    const response = await this.sendToContent<{ success: boolean }>({
-      type: 'CLICK_ELEMENT',
-      selector,
-    });
-
-    if (response?.success) {
-      this.log('元素', '元素已点击', 'success');
-    } else {
-      this.log('元素', '点击失败', 'error');
-    }
-  }
-
-  private async getElementInfo(): Promise<void> {
-    const selectorEl = document.getElementById('element-selector') as HTMLInputElement;
-    const selector = selectorEl?.value.trim();
-
-    if (!selector) {
-      this.log('元素', '请输入 CSS 选择器', 'error');
-      return;
-    }
-
-    this.log('元素', `获取元素信息: ${selector}`);
-
-    const response = await this.sendToContent<{
-      success: boolean;
-      data: {
-        exists: boolean;
-        tagName: string;
-        id: string;
-        className: string;
-        text: string;
-        rect: { x: number; y: number; width: number; height: number };
-        visible: boolean;
-        clickable: boolean;
-      };
-    }>({
-      type: 'GET_ELEMENT_INFO',
-      selector,
-    });
-
-    const resultEl = document.getElementById('element-result');
-    if (!resultEl) return;
-
-    if (response?.success && response.data?.exists) {
-      const info = response.data;
-      resultEl.innerHTML = `
-        <div class="debug-info-grid">
-          <div class="debug-info-item">
-            <span class="debug-info-label">标签:</span>
-            <span class="debug-info-value">${info.tagName}</span>
-          </div>
-          <div class="debug-info-item">
-            <span class="debug-info-label">位置:</span>
-            <span class="debug-info-value">(${info.rect.x}, ${info.rect.y})</span>
-          </div>
-          <div class="debug-info-item">
-            <span class="debug-info-label">大小:</span>
-            <span class="debug-info-value">${info.rect.width} x ${info.rect.height}</span>
-          </div>
-          <div class="debug-info-item">
-            <span class="debug-info-label">可见:</span>
-            <span class="debug-info-value">${info.visible ? '是' : '否'}</span>
-          </div>
-          <div class="debug-info-item">
-            <span class="debug-info-label">可点击:</span>
-            <span class="debug-info-value">${info.clickable ? '是' : '否'}</span>
-          </div>
-          <div class="debug-info-item">
-            <span class="debug-info-label">文本:</span>
-            <span class="debug-info-value">${this.escapeHtml(info.text.substring(0, 50))}</span>
-          </div>
-        </div>
-      `;
-      this.log('元素', `找到元素: ${info.tagName}`, 'success');
-    } else {
-      resultEl.innerHTML = '<div class="debug-empty">未找到元素</div>';
-      this.log('元素', '未找到元素', 'error');
-    }
-  }
-
-  // ==================== Screenshot ====================
-
-  private async captureScreenshot(): Promise<void> {
-    const btn = document.getElementById('capture-screenshot-btn');
-    const previewEl = document.getElementById('screenshot-preview');
-    const analyzeBtn = document.getElementById('analyze-screenshot-btn') as HTMLButtonElement;
 
     if (btn) btn.classList.add('loading');
-    this.log('截图', '正在捕获页面截图...');
-
-    try {
-      // 获取当前活动标签页
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) {
-        this.log('截图', '未找到活动标签页', 'error');
-        return;
-      }
-
-      // 使用 chrome.tabs.captureVisibleTab 捕获截图
-      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
-        format: 'png',
-        quality: 90,
-      });
-
-      this.currentScreenshot = dataUrl;
-
-      // 显示截图预览
-      if (previewEl) {
-        previewEl.innerHTML = `<img src="${dataUrl}" alt="页面截图" />`;
-      }
-
-      // 启用分析按钮
-      if (analyzeBtn) {
-        analyzeBtn.disabled = false;
-      }
-
-      this.log('截图', '截图捕获成功', 'success');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.log('截图', `截图失败: ${errorMessage}`, 'error');
-
-      if (previewEl) {
-        previewEl.innerHTML = `<div class="debug-empty">截图失败: ${errorMessage}</div>`;
-      }
-    } finally {
-      if (btn) btn.classList.remove('loading');
-    }
-  }
-
-  private async analyzeScreenshot(): Promise<void> {
-    if (!this.currentScreenshot) {
-      this.log('截图', '请先截图', 'error');
-      return;
-    }
-
-    const formConfig = this.getAPIConfigFromForm('deepseek');
-    if (!formConfig) {
-      this.log('截图', '请先配置 DeepSeek API', 'error');
-      return;
-    }
-
-    const btn = document.getElementById('analyze-screenshot-btn');
-    const resultEl = document.getElementById('screenshot-analysis-result');
-    const promptEl = document.getElementById('screenshot-prompt') as HTMLTextAreaElement;
-    const prompt = promptEl?.value.trim() || '请分析这个网页截图的布局和内容';
-
-    if (btn) btn.classList.add('loading');
-    this.log('截图', '正在发送给 AI 分析...');
-
-    try {
-      const response = await this.sendToBackground<{
-        success: boolean;
-        content?: string;
-        error?: string;
-        latency?: number;
-      }>({
-        type: 'ANALYZE_SCREENSHOT',
-        image: this.currentScreenshot,
-        prompt,
-        config: {
-          provider: 'deepseek',
-          apiKey: formConfig.apiKey,
-          baseUrl: formConfig.baseUrl,
-        },
-      });
-
-      if (response?.success && response.content) {
-        if (resultEl) {
-          resultEl.innerHTML = `<div class="ai-analysis-text">${this.escapeHtml(response.content)}</div>`;
-        }
-        this.log('截图', `AI 分析完成 (${response.latency}ms)`, 'success');
-      } else {
-        if (resultEl) {
-          resultEl.innerHTML = `<div class="ai-result-empty">分析失败: ${response?.error || '未知错误'}</div>`;
-        }
-        this.log('截图', `分析失败: ${response?.error || '未知错误'}`, 'error');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.log('截图', `分析出错: ${errorMessage}`, 'error');
-
-      if (resultEl) {
-        resultEl.innerHTML = `<div class="ai-result-empty">分析出错: ${errorMessage}</div>`;
-      }
-    } finally {
-      if (btn) btn.classList.remove('loading');
-    }
-  }
-
-  // ==================== Happy Test ====================
-
-  private async testGetSessions(): Promise<void> {
-    const btn = document.getElementById('test-get-sessions-btn');
-    const countEl = document.getElementById('test-session-count');
-    const listEl = document.getElementById('test-sessions-list');
-
-    if (btn) btn.classList.add('loading');
-    this.log('测试', '正在获取会话列表...');
+    this.log('会话', '正在获取会话列表...');
 
     const response = await this.sendToContent<{
       success: boolean;
@@ -1258,65 +641,158 @@ class DebugConsole {
         if (sessions.length === 0) {
           listEl.innerHTML = '<div class="debug-empty">未找到会话</div>';
         } else {
-          listEl.innerHTML = sessions.map((session, index) => `
-            <div class="debug-list-item" style="padding: 8px; border-bottom: 1px solid #3c3c3c; cursor: pointer;"
-                 data-selector="${this.escapeHtml(session.selector)}" data-index="${index}">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: ${session.active ? '#4caf50' : '#cccccc'};">
-                  ${session.active ? '● ' : ''}${index + 1}. ${this.escapeHtml(session.title)}
-                </span>
-                <button class="btn btn-small btn-secondary test-click-session-btn" data-selector="${this.escapeHtml(session.selector)}">点击</button>
-              </div>
-            </div>
-          `).join('');
+          listEl.innerHTML = sessions.map((session, index) => {
+            const role = this.sessionRoles.get(session.id);
+            const roleLabel = role === 'leader' ? '主导方' : role === 'executor' ? '执行方' : '';
+            const roleClass = role === 'leader' ? 'role-leader' : role === 'executor' ? 'role-executor' : '';
 
-          // 添加点击事件
-          listEl.querySelectorAll('.test-click-session-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              const selector = (btn as HTMLElement).dataset.selector;
-              if (selector) this.testClickSession(selector);
-            });
-          });
+            return `
+              <div class="session-list-item ${session.active ? 'active' : ''}" data-session-id="${session.id}" data-selector="${this.escapeHtml(session.selector)}">
+                <div class="session-info">
+                  <span class="session-index">${index + 1}.</span>
+                  <span class="session-title">${this.escapeHtml(session.title)}</span>
+                  ${roleLabel ? `<span class="session-role-badge ${roleClass}">${roleLabel}</span>` : ''}
+                </div>
+                <div class="session-actions">
+                  <button class="btn btn-tiny btn-secondary select-session-btn" data-selector="${this.escapeHtml(session.selector)}" title="模拟选择">选择</button>
+                  <button class="btn btn-tiny btn-secondary set-role-btn" data-session-id="${session.id}" title="设置角色">角色</button>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          // 绑定事件
+          this.bindSessionListEvents();
         }
       }
 
-      this.log('测试', `找到 ${sessions.length} 个会话`, 'success');
+      this.log('会话', `找到 ${sessions.length} 个会话`, 'success');
     } else {
       if (countEl) countEl.textContent = '错误';
       if (listEl) listEl.innerHTML = '<div class="debug-empty">获取失败</div>';
-      this.log('测试', '获取会话列表失败', 'error');
+      this.log('会话', '获取会话列表失败', 'error');
     }
   }
 
-  private async testClickSession(selector: string): Promise<void> {
-    this.log('测试', `正在点击会话: ${selector}`);
+  private bindSessionListEvents(): void {
+    // 模拟选择按钮
+    document.querySelectorAll('.select-session-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const selector = (btn as HTMLElement).dataset.selector;
+        if (selector) {
+          await this.selectSession(selector);
+        }
+      });
+    });
 
+    // 设置角色按钮
+    document.querySelectorAll('.set-role-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const sessionId = (btn as HTMLElement).dataset.sessionId;
+        if (sessionId) {
+          await this.showRoleSelectionModal(sessionId);
+        }
+      });
+    });
+  }
+
+  private async selectSession(selector: string): Promise<void> {
+    this.log('会话', `正在选择会话: ${selector.substring(0, 50)}...`);
     const response = await this.sendToContent<{ success: boolean }>({
       type: 'CLICK_ELEMENT',
       selector,
     });
 
     if (response?.success) {
-      this.log('测试', '点击成功', 'success');
-      // 延迟后刷新会话列表
-      setTimeout(() => this.testGetSessions(), 500);
+      this.log('会话', '会话选择成功', 'success');
+      // 延迟刷新会话列表
+      setTimeout(() => this.getSessions(), 500);
     } else {
-      this.log('测试', '点击失败', 'error');
+      this.log('会话', `会话选择失败，选择器: ${selector}`, 'error');
     }
   }
 
-  private async testInputText(): Promise<void> {
-    const inputEl = document.getElementById('test-input-text') as HTMLInputElement;
-    const resultEl = document.getElementById('test-input-result');
-    const text = inputEl?.value || '';
+  private showRoleSelectionModal(sessionId: string): Promise<void> {
+    return new Promise((resolve) => {
+      const currentRole = this.sessionRoles.get(sessionId);
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+
+      const content = document.createElement('div');
+      content.className = 'modal-content';
+
+      content.innerHTML = `
+        <div class="modal-header">
+          <span class="modal-title">设置页面角色</span>
+        </div>
+        <div class="modal-body">
+          <p class="modal-message">选择此会话的角色：</p>
+          <div class="role-selection">
+            <button class="btn btn-full ${currentRole === 'leader' ? 'btn-primary' : 'btn-secondary'}" id="role-leader-btn">
+              主导方 (Leader)
+            </button>
+            <button class="btn btn-full ${currentRole === 'executor' ? 'btn-primary' : 'btn-secondary'}" id="role-executor-btn">
+              执行方 (Executor)
+            </button>
+            <button class="btn btn-full btn-warning" id="role-clear-btn">
+              清除角色
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modal-cancel-btn">取消</button>
+        </div>
+      `;
+
+      overlay.appendChild(content);
+      document.body.appendChild(overlay);
+
+      const cleanup = () => {
+        document.body.removeChild(overlay);
+        resolve();
+      };
+
+      content.querySelector('#role-leader-btn')?.addEventListener('click', () => {
+        this.saveSessionRole(sessionId, 'leader');
+        cleanup();
+        this.getSessions(); // 刷新列表显示角色
+      });
+
+      content.querySelector('#role-executor-btn')?.addEventListener('click', () => {
+        this.saveSessionRole(sessionId, 'executor');
+        cleanup();
+        this.getSessions();
+      });
+
+      content.querySelector('#role-clear-btn')?.addEventListener('click', () => {
+        this.clearSessionRole(sessionId);
+        cleanup();
+        this.getSessions();
+      });
+
+      content.querySelector('#modal-cancel-btn')?.addEventListener('click', cleanup);
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) cleanup();
+      });
+    });
+  }
+
+  // ==================== Happy Debug - Input Simulation ====================
+
+  private async simulateInput(): Promise<void> {
+    const textEl = document.getElementById('input-text') as HTMLTextAreaElement;
+    const resultEl = document.getElementById('input-result');
+    const text = textEl?.value.trim() || '';
 
     if (!text) {
-      this.log('测试', '请输入测试文字', 'error');
+      this.log('输入', '请输入测试文字', 'error');
       return;
     }
 
-    this.log('测试', `正在输入: ${text.substring(0, 20)}...`);
+    this.log('输入', `正在输入: ${text.substring(0, 20)}...`);
 
     const response = await this.sendToContent<{ success: boolean }>({
       type: 'INPUT_TEXT',
@@ -1325,17 +801,89 @@ class DebugConsole {
     });
 
     if (response?.success) {
-      if (resultEl) resultEl.innerHTML = `<div style="color: #4caf50;">✓ 输入成功: "${this.escapeHtml(text)}"</div>`;
-      this.log('测试', '输入成功', 'success');
+      if (resultEl) resultEl.innerHTML = `<div style="color: #4caf50;">✓ 输入成功: "${this.escapeHtml(text.substring(0, 30))}${text.length > 30 ? '...' : ''}"</div>`;
+      this.log('输入', '输入成功', 'success');
     } else {
       if (resultEl) resultEl.innerHTML = '<div style="color: #f44336;">✗ 输入失败</div>';
-      this.log('测试', '输入失败', 'error');
+      this.log('输入', '输入失败', 'error');
     }
   }
 
-  private async testSimulateSend(): Promise<void> {
-    const resultEl = document.getElementById('test-input-result');
-    this.log('测试', '正在模拟发送...');
+  private async simulateSendWithDelay(): Promise<void> {
+    const textEl = document.getElementById('input-text') as HTMLTextAreaElement;
+    const delayEl = document.getElementById('delay-seconds') as HTMLInputElement;
+    const text = textEl?.value.trim() || '';
+    const delay = parseInt(delayEl?.value || '0', 10);
+
+    // 如果有输入文字，先模拟输入
+    if (text) {
+      const inputResponse = await this.sendToContent<{ success: boolean }>({
+        type: 'INPUT_TEXT',
+        selector: 'happy-input',
+        text,
+      });
+
+      if (!inputResponse?.success) {
+        this.log('发送', '输入失败，无法发送', 'error');
+        return;
+      }
+    }
+
+    if (delay > 0) {
+      // 启动延时发送
+      this.startDelaySend(delay, text);
+    } else {
+      // 直接发送（不管有没有输入文字，因为用户可能已经手动输入了）
+      await this.executeSimulateSend();
+    }
+  }
+
+  private startDelaySend(seconds: number, text: string): void {
+    this.delaySendState = {
+      timerId: null,
+      remaining: seconds,
+      text,
+      isActive: true,
+    };
+
+    // 显示顶部提示条
+    this.showDelayBanner(seconds);
+
+    // 启动倒计时
+    this.delaySendState.timerId = window.setInterval(() => {
+      this.delaySendState.remaining--;
+      this.updateDelayCountdown(this.delaySendState.remaining);
+
+      if (this.delaySendState.remaining <= 0) {
+        this.executeDelaySend();
+      }
+    }, 1000);
+
+    this.log('发送', `将在 ${seconds} 秒后发送`, 'info');
+  }
+
+  private cancelDelaySend(): void {
+    if (this.delaySendState.timerId) {
+      clearInterval(this.delaySendState.timerId);
+    }
+    this.hideDelayBanner();
+    this.delaySendState.isActive = false;
+    this.log('发送', '延时发送已取消', 'info');
+  }
+
+  private async executeDelaySend(): Promise<void> {
+    if (this.delaySendState.timerId) {
+      clearInterval(this.delaySendState.timerId);
+    }
+    this.hideDelayBanner();
+    this.delaySendState.isActive = false;
+
+    await this.executeSimulateSend();
+  }
+
+  private async executeSimulateSend(): Promise<void> {
+    const resultEl = document.getElementById('input-result');
+    this.log('发送', '正在模拟发送...');
 
     const response = await this.sendToContent<{ success: boolean }>({
       type: 'SIMULATE_SEND',
@@ -1343,16 +891,33 @@ class DebugConsole {
 
     if (response?.success) {
       if (resultEl) resultEl.innerHTML = '<div style="color: #4caf50;">✓ 发送指令已执行</div>';
-      this.log('测试', '发送指令已执行', 'success');
+      this.log('发送', '发送指令已执行', 'success');
     } else {
       if (resultEl) resultEl.innerHTML = '<div style="color: #f44336;">✗ 发送失败</div>';
-      this.log('测试', '发送失败', 'error');
+      this.log('发送', '发送失败', 'error');
     }
   }
 
-  private async testClearInput(): Promise<void> {
-    const resultEl = document.getElementById('test-input-result');
-    this.log('测试', '正在清空输入框...');
+  private showDelayBanner(seconds: number): void {
+    const banner = document.getElementById('delay-send-banner');
+    const countdown = document.getElementById('delay-countdown');
+    if (banner) banner.style.display = 'block';
+    if (countdown) countdown.textContent = String(seconds);
+  }
+
+  private hideDelayBanner(): void {
+    const banner = document.getElementById('delay-send-banner');
+    if (banner) banner.style.display = 'none';
+  }
+
+  private updateDelayCountdown(seconds: number): void {
+    const countdown = document.getElementById('delay-countdown');
+    if (countdown) countdown.textContent = String(seconds);
+  }
+
+  private async clearInputBox(): Promise<void> {
+    const resultEl = document.getElementById('input-result');
+    this.log('输入', '正在清空输入框...');
 
     const response = await this.sendToContent<{ success: boolean }>({
       type: 'CLEAR_INPUT',
@@ -1360,20 +925,192 @@ class DebugConsole {
 
     if (response?.success) {
       if (resultEl) resultEl.innerHTML = '<div style="color: #4caf50;">✓ 输入框已清空</div>';
-      this.log('测试', '输入框已清空', 'success');
+      this.log('输入', '输入框已清空', 'success');
     } else {
       if (resultEl) resultEl.innerHTML = '<div style="color: #f44336;">✗ 清空失败</div>';
-      this.log('测试', '清空失败', 'error');
+      this.log('输入', '清空失败', 'error');
     }
   }
 
-  private async testGetChatMessages(): Promise<void> {
-    const btn = document.getElementById('test-get-chat-btn');
-    const countEl = document.getElementById('test-message-count');
-    const contentEl = document.getElementById('test-chat-content');
+  // ==================== AI Analysis ====================
+
+  /**
+   * 获取 AI 分析区域选择的配置
+   */
+  private getAIAnalysisConfig(): { provider: APIProvider; apiKey: string; baseUrl: string; model?: string } | null {
+    const providerEl = document.getElementById('ai-analysis-provider') as HTMLSelectElement;
+    const modelEl = document.getElementById('ai-analysis-model') as HTMLSelectElement;
+
+    const provider = (providerEl?.value || 'deepseek') as APIProvider;
+    const model = modelEl?.value;
+
+    // 从对应 provider 的配置表单中获取 apiKey 和 baseUrl
+    const config = this.getAPIConfigFromForm(provider);
+    if (!config) return null;
+
+    return {
+      provider,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      model: model || config.model,
+    };
+  }
+
+  private async analyzeWithAI(): Promise<void> {
+    const btn = document.getElementById('ai-analysis-btn');
+    const viewBtn = document.getElementById('view-screenshot-btn');
+    const resultEl = document.getElementById('ai-analysis-result');
+    const promptEl = document.getElementById('ai-analysis-prompt') as HTMLTextAreaElement;
+    const providerEl = document.getElementById('ai-analysis-provider') as HTMLSelectElement;
+    const modelEl = document.getElementById('ai-analysis-model') as HTMLSelectElement;
+
+    const prompt = promptEl?.value.trim() || '读取右边区域的内容分析当前最应该选底部那个选择按钮答案和原因';
+    const selectedProvider = (providerEl?.value || 'deepseek') as APIProvider;
+    const selectedModel = modelEl?.value || '';
+
+    // 检查 DeepSeek 是否支持视觉分析
+    if (selectedProvider === 'deepseek') {
+      if (resultEl) {
+        resultEl.innerHTML = `<div class="analysis-error">⚠️ DeepSeek API 不支持图像分析功能。<br><br>请切换到 OpenAI (gpt-4o) 进行截图分析，或使用 DeepSeek 进行纯文本分析。</div>`;
+      }
+      this.log('AI分析', 'DeepSeek 不支持图像分析', 'error');
+      return;
+    }
+
+    // 检查 API 配置（使用 AI 分析区域选择的 provider）
+    const analysisConfig = this.getAIAnalysisConfig();
+    if (!analysisConfig) {
+      if (resultEl) {
+        resultEl.innerHTML = `<div class="analysis-error">请先在"环境 / API 配置"中配置 ${selectedProvider.toUpperCase()} API</div>`;
+      }
+      this.log('AI分析', `${selectedProvider.toUpperCase()} API 未配置`, 'error');
+      return;
+    }
 
     if (btn) btn.classList.add('loading');
-    this.log('测试', '正在读取聊天内容...');
+    if (resultEl) {
+      resultEl.innerHTML = `<div class="analysis-loading">正在使用 ${selectedProvider.toUpperCase()} (${selectedModel}) 截图分析中...</div>`;
+    }
+    this.log('AI分析', `开始截图分析 (${selectedProvider.toUpperCase()} / ${selectedModel})...`);
+
+    try {
+      // 1. 截取当前页面
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        throw new Error('未找到活动标签页');
+      }
+
+      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+        format: 'png',
+        quality: 100,
+      });
+
+      // 保存截图数据用于预览
+      this.lastScreenshotDataUrl = dataUrl;
+      if (viewBtn) viewBtn.style.display = 'inline-flex';
+
+      this.log('AI分析', '截图完成，正在发送给 AI...');
+
+      // 2. 发送给 AI 分析
+      const response = await this.sendToBackground<{
+        success: boolean;
+        content?: string;
+        error?: string;
+        latency?: number;
+      }>({
+        type: 'ANALYZE_SCREENSHOT',
+        config: {
+          provider: analysisConfig.provider,
+          apiKey: analysisConfig.apiKey,
+          baseUrl: analysisConfig.baseUrl,
+          model: analysisConfig.model,
+        },
+        image: dataUrl,
+        prompt,
+      });
+
+      if (btn) btn.classList.remove('loading');
+
+      if (response?.success && response.content) {
+        if (resultEl) {
+          resultEl.innerHTML = `<div class="analysis-content">${this.escapeHtml(response.content)}</div>`;
+        }
+        this.log('AI分析', `分析完成 (${response.latency}ms)`, 'success');
+      } else {
+        const errorMsg = response?.error || '分析失败';
+        if (resultEl) {
+          resultEl.innerHTML = `<div class="analysis-error">✗ ${this.escapeHtml(errorMsg)}</div>`;
+        }
+        this.log('AI分析', `分析失败: ${errorMsg}`, 'error');
+      }
+    } catch (error) {
+      if (btn) btn.classList.remove('loading');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (resultEl) {
+        resultEl.innerHTML = `<div class="analysis-error">✗ ${this.escapeHtml(errorMessage)}</div>`;
+      }
+      this.log('AI分析', `错误: ${errorMessage}`, 'error');
+    }
+  }
+
+  // ==================== Happy Debug - Screenshot ====================
+
+  private async takeScreenshot(): Promise<void> {
+    const btn = document.getElementById('screenshot-btn');
+    const resultEl = document.getElementById('screenshot-result');
+
+    if (btn) btn.classList.add('loading');
+    this.log('截图', '正在截取网页...');
+
+    try {
+      // 获取当前活动标签页
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        throw new Error('未找到活动标签页');
+      }
+
+      // 使用 chrome.tabs.captureVisibleTab 截取可见区域
+      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+        format: 'png',
+        quality: 100,
+      });
+
+      // 将 dataUrl 转换为 Blob
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+
+      // 复制到剪贴板
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          [blob.type]: blob,
+        }),
+      ]);
+
+      if (resultEl) {
+        resultEl.innerHTML = '<div style="color: #4caf50;">✓ 截图已复制到剪贴板</div>';
+      }
+      this.log('截图', '截图已复制到剪贴板', 'success');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (resultEl) {
+        resultEl.innerHTML = `<div style="color: #f44336;">✗ 截图失败: ${this.escapeHtml(errorMessage)}</div>`;
+      }
+      this.log('截图', `截图失败: ${errorMessage}`, 'error');
+    } finally {
+      if (btn) btn.classList.remove('loading');
+    }
+  }
+
+  // ==================== Happy Debug - Read Content ====================
+
+  private async readChatContent(): Promise<void> {
+    const btn = document.getElementById('read-content-btn');
+    const countEl = document.getElementById('message-count');
+    const contentEl = document.getElementById('chat-content');
+    const exportBtn = document.getElementById('export-content-btn');
+
+    if (btn) btn.classList.add('loading');
+    this.log('读取', '正在读取聊天内容...');
 
     const response = await this.sendToContent<{
       success: boolean;
@@ -1384,11 +1121,13 @@ class DebugConsole {
 
     if (response?.success && response.data) {
       const messages = response.data;
+      this.chatMessages = messages; // 保存消息用于导出
       if (countEl) countEl.textContent = String(messages.length);
 
       if (contentEl) {
         if (messages.length === 0) {
           contentEl.innerHTML = '<div class="debug-empty">未找到聊天消息</div>';
+          if (exportBtn) exportBtn.style.display = 'none';
         } else {
           contentEl.innerHTML = messages.map((msg) => `
             <div class="debug-list-item" style="padding: 8px; border-bottom: 1px solid #3c3c3c; margin-bottom: 4px;">
@@ -1400,442 +1139,382 @@ class DebugConsole {
               </div>
             </div>
           `).join('');
+          // 显示导出按钮
+          if (exportBtn) exportBtn.style.display = 'inline-flex';
         }
       }
 
-      this.log('测试', `找到 ${messages.length} 条消息`, 'success');
+      this.log('读取', `找到 ${messages.length} 条消息`, 'success');
     } else {
       if (countEl) countEl.textContent = '错误';
       if (contentEl) contentEl.innerHTML = '<div class="debug-empty">读取失败</div>';
-      this.log('测试', '读取聊天内容失败', 'error');
+      if (exportBtn) exportBtn.style.display = 'none';
+      this.chatMessages = [];
+      this.log('读取', '读取聊天内容失败', 'error');
     }
   }
 
-  // ==================== Debug Tools (6.7 - 6.11) ====================
-
-  // 6.7 输出监听测试
-  private async testOutputListener(): Promise<void> {
-    if (!this.activeSessionId) {
-      this.log('输出测试', '请先选择活动会话', 'error');
-      return;
-    }
-
-    const linesEl = document.getElementById('output-listener-lines') as HTMLInputElement;
-    const resultEl = document.getElementById('output-listener-result');
-    const lines = parseInt(linesEl?.value || '10', 10);
-
-    this.log('输出测试', `正在捕获最后 ${lines} 行输出...`);
-
-    const response = await this.sendToContent<{ output: string[] }>({
-      type: 'GET_SESSION_OUTPUT',
-      sessionId: this.activeSessionId,
-      lines,
-    });
-
-    if (!resultEl) return;
-
-    if (response?.output && response.output.length > 0) {
-      const outputHtml = response.output.map((line, index) => `
-        <div class="output-line" style="padding: 2px 0; border-bottom: 1px solid #2a2a2a; font-family: monospace; font-size: 11px;">
-          <span style="color: #888; margin-right: 8px;">${index + 1}</span>
-          <span style="color: #ccc;">${this.escapeHtml(line)}</span>
-        </div>
-      `).join('');
-
-      resultEl.innerHTML = `
-        <div style="margin-bottom: 8px; font-size: 11px; color: #4caf50;">✓ 成功捕获 ${response.output.length} 行</div>
-        <div style="max-height: 150px; overflow-y: auto; background: #1e1e1e; border-radius: 4px; padding: 8px;">
-          ${outputHtml}
-        </div>
-      `;
-      this.log('输出测试', `成功捕获 ${response.output.length} 行`, 'success');
-    } else {
-      resultEl.innerHTML = '<div class="debug-empty">未捕获到输出内容</div>';
-      this.log('输出测试', '未捕获到输出内容', 'error');
-    }
+  private clearChatContent(): void {
+    const countEl = document.getElementById('message-count');
+    const contentEl = document.getElementById('chat-content');
+    const exportBtn = document.getElementById('export-content-btn');
+    if (countEl) countEl.textContent = '--';
+    if (contentEl) contentEl.innerHTML = '<div class="debug-empty">点击"读取内容"获取当前聊天记录</div>';
+    if (exportBtn) exportBtn.style.display = 'none';
+    this.chatMessages = [];
+    this.log('读取', '已清空内容显示');
   }
 
-  // 6.8 等待状态检测对比
-  private async detectWaitingState(): Promise<void> {
-    if (!this.activeSessionId) {
-      this.log('等待检测', '请先选择活动会话', 'error');
+  private exportChatContent(): void {
+    if (this.chatMessages.length === 0) {
+      this.log('导出', '没有内容可导出', 'error');
       return;
     }
 
-    const resultEl = document.getElementById('waiting-state-result');
-    if (!resultEl) return;
+    // 格式化导出内容
+    const exportData = {
+      exportTime: new Date().toISOString(),
+      messageCount: this.chatMessages.length,
+      messages: this.chatMessages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+    };
 
-    resultEl.innerHTML = '<div class="debug-empty">正在检测...</div>';
-    this.log('等待检测', '正在检测等待状态...');
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
 
-    // 先获取输出
-    const outputResponse = await this.sendToContent<{ output: string[] }>({
-      type: 'GET_SESSION_OUTPUT',
-      sessionId: this.activeSessionId,
-      lines: 10,
-    });
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-content-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 
-    if (!outputResponse?.output) {
-      resultEl.innerHTML = '<div class="debug-empty">获取会话输出失败</div>';
-      this.log('等待检测', '获取会话输出失败', 'error');
-      return;
-    }
-
-    // 发送到后台进行检测
-    const response = await this.sendToBackground<{
-      success: boolean;
-      data: {
-        ruleBasedResult: { waiting: boolean; matchedPattern: string | null; lastLine: string };
-        aiResult: { waiting: boolean; state: string; confidence: number; role: string };
-      };
-    }>({
-      type: 'DETECT_WAITING_STATE',
-      recentText: outputResponse.output,
-    });
-
-    if (response?.success && response.data) {
-      const { ruleBasedResult, aiResult } = response.data;
-
-      resultEl.innerHTML = `
-        <div class="waiting-comparison-row">
-          <span class="waiting-comparison-label">规则检测:</span>
-          <span class="waiting-comparison-value ${ruleBasedResult.waiting ? 'waiting' : 'not-waiting'}">
-            ${ruleBasedResult.waiting ? '等待输入' : '运行中'}
-          </span>
-        </div>
-        <div class="waiting-comparison-row">
-          <span class="waiting-comparison-label">AI 检测:</span>
-          <span class="waiting-comparison-value ${aiResult.waiting ? 'waiting' : 'not-waiting'}">
-            ${aiResult.waiting ? '等待输入' : '运行中'} (${Math.round(aiResult.confidence * 100)}%)
-          </span>
-        </div>
-        <div class="waiting-comparison-row">
-          <span class="waiting-comparison-label">判定一致:</span>
-          <span class="waiting-comparison-value ${ruleBasedResult.waiting === aiResult.waiting ? 'not-waiting' : 'waiting'}">
-            ${ruleBasedResult.waiting === aiResult.waiting ? '一致' : '不一致'}
-          </span>
-        </div>
-        <div class="waiting-signals">
-          <div><strong>规则匹配:</strong> ${ruleBasedResult.matchedPattern || '无匹配'}</div>
-          <div><strong>AI 角色:</strong> ${aiResult.role}</div>
-          <div><strong>最后一行:</strong> ${this.escapeHtml(ruleBasedResult.lastLine)}</div>
-        </div>
-      `;
-
-      this.log('等待检测', `规则: ${ruleBasedResult.waiting ? '等待' : '运行'}, AI: ${aiResult.waiting ? '等待' : '运行'}`, 'success');
-    } else {
-      resultEl.innerHTML = '<div class="debug-empty">检测失败</div>';
-      this.log('等待检测', '检测失败', 'error');
-    }
+    this.log('导出', `已导出 ${this.chatMessages.length} 条消息`, 'success');
   }
 
-  // 6.9 超时模拟
-  private startTimeoutSimulation(): void {
-    if (this.timeoutState.isRunning) return;
+  // ==================== Pricing Modal ====================
 
-    const displayEl = document.getElementById('timeout-display');
-    const valueEl = displayEl?.querySelector('.timeout-value');
-    const statusEl = document.getElementById('timeout-status');
-    const statusTextEl = statusEl?.querySelector('.timeout-status-text');
-    const startBtn = document.getElementById('start-timeout-btn') as HTMLButtonElement;
-    const stopBtn = document.getElementById('stop-timeout-btn') as HTMLButtonElement;
+  private showPricingModal(): void {
+    // DeepSeek 价格 (人民币/百万tokens)
+    const deepseekPricing = [
+      { model: 'deepseek-chat', input: '2元', cache: '0.2元', output: '3元', note: 'DeepSeek-V3.2 非思考模式' },
+      { model: 'deepseek-reasoner', input: '2元', cache: '0.2元', output: '3元', note: 'DeepSeek-V3.2 思考模式' },
+    ];
 
-    this.timeoutState.remaining = 30;
-    this.timeoutState.isRunning = true;
+    // OpenAI 价格 (美元/百万tokens)
+    const openaiPricing = [
+      { model: 'gpt-5.2', input: '1.75', cache: '0.175', output: '14.00' },
+      { model: 'gpt-5.1', input: '1.25', cache: '0.125', output: '10.00' },
+      { model: 'gpt-5', input: '1.25', cache: '0.125', output: '10.00' },
+      { model: 'gpt-5-mini', input: '0.25', cache: '0.025', output: '2.00' },
+      { model: 'gpt-5-nano', input: '0.05', cache: '0.005', output: '0.40' },
+      { model: 'gpt-5.2-chat-latest', input: '1.75', cache: '0.175', output: '14.00' },
+      { model: 'gpt-5.1-chat-latest', input: '1.25', cache: '0.125', output: '10.00' },
+      { model: 'gpt-5-chat-latest', input: '1.25', cache: '0.125', output: '10.00' },
+      { model: 'gpt-5.2-codex', input: '1.75', cache: '0.175', output: '14.00' },
+      { model: 'gpt-5.1-codex-max', input: '1.25', cache: '0.125', output: '10.00' },
+      { model: 'gpt-5.1-codex', input: '1.25', cache: '0.125', output: '10.00' },
+      { model: 'gpt-5-codex', input: '1.25', cache: '0.125', output: '10.00' },
+      { model: 'gpt-5.2-pro', input: '21.00', cache: '-', output: '168.00' },
+      { model: 'gpt-5-pro', input: '15.00', cache: '-', output: '120.00' },
+      { model: 'gpt-4.1', input: '2.00', cache: '0.50', output: '8.00' },
+      { model: 'gpt-4.1-mini', input: '0.40', cache: '0.10', output: '1.60' },
+      { model: 'gpt-4.1-nano', input: '0.10', cache: '0.025', output: '0.40' },
+      { model: 'gpt-4o', input: '2.50', cache: '1.25', output: '10.00' },
+      { model: 'gpt-4o-2024-05-13', input: '5.00', cache: '-', output: '15.00' },
+      { model: 'gpt-4o-mini', input: '0.15', cache: '0.075', output: '0.60' },
+      { model: 'gpt-realtime', input: '4.00', cache: '0.40', output: '16.00' },
+      { model: 'gpt-realtime-mini', input: '0.60', cache: '0.06', output: '2.40' },
+      { model: 'gpt-4o-realtime-preview', input: '5.00', cache: '2.50', output: '20.00' },
+      { model: 'gpt-4o-mini-realtime-preview', input: '0.60', cache: '0.30', output: '2.40' },
+      { model: 'gpt-audio', input: '2.50', cache: '-', output: '10.00' },
+      { model: 'gpt-audio-mini', input: '0.60', cache: '-', output: '2.40' },
+      { model: 'gpt-4o-audio-preview', input: '2.50', cache: '-', output: '10.00' },
+      { model: 'gpt-4o-mini-audio-preview', input: '0.15', cache: '-', output: '0.60' },
+      { model: 'o1', input: '15.00', cache: '7.50', output: '60.00' },
+      { model: 'o1-pro', input: '150.00', cache: '-', output: '600.00' },
+      { model: 'o3-pro', input: '20.00', cache: '-', output: '80.00' },
+      { model: 'o3', input: '2.00', cache: '0.50', output: '8.00' },
+      { model: 'o3-deep-research', input: '10.00', cache: '2.50', output: '40.00' },
+      { model: 'o4-mini', input: '1.10', cache: '0.275', output: '4.40' },
+      { model: 'o4-mini-deep-research', input: '2.00', cache: '0.50', output: '8.00' },
+      { model: 'o3-mini', input: '1.10', cache: '0.55', output: '4.40' },
+      { model: 'o1-mini', input: '1.10', cache: '0.55', output: '4.40' },
+      { model: 'gpt-5.1-codex-mini', input: '0.25', cache: '0.025', output: '2.00' },
+      { model: 'codex-mini-latest', input: '1.50', cache: '0.375', output: '6.00' },
+      { model: 'gpt-5-search-api', input: '1.25', cache: '0.125', output: '10.00' },
+      { model: 'gpt-4o-mini-search-preview', input: '0.15', cache: '-', output: '0.60' },
+      { model: 'gpt-4o-search-preview', input: '2.50', cache: '-', output: '10.00' },
+      { model: 'computer-use-preview', input: '3.00', cache: '-', output: '12.00' },
+      { model: 'gpt-image-1.5', input: '5.00', cache: '1.25', output: '10.00' },
+      { model: 'chatgpt-image-latest', input: '5.00', cache: '1.25', output: '10.00' },
+      { model: 'gpt-image-1', input: '5.00', cache: '1.25', output: '-' },
+      { model: 'gpt-image-1-mini', input: '2.00', cache: '0.20', output: '-' },
+    ];
 
-    if (displayEl) displayEl.classList.add('running');
-    if (displayEl) displayEl.classList.remove('expired');
-    if (valueEl) valueEl.textContent = '30';
-    if (statusTextEl) {
-      statusTextEl.textContent = '正在模拟 WAITING_INPUT 状态...';
-      statusTextEl.classList.add('waiting');
-      statusTextEl.classList.remove('expired');
-    }
-    if (startBtn) startBtn.disabled = true;
-    if (stopBtn) stopBtn.disabled = false;
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
 
-    this.log('超时模拟', '开始 30 秒倒计时');
+    const content = document.createElement('div');
+    content.className = 'modal-content pricing-modal';
+    content.style.maxWidth = '650px';
+    content.style.maxHeight = '80vh';
 
-    this.timeoutState.intervalId = window.setInterval(() => {
-      this.timeoutState.remaining--;
+    const deepseekRows = deepseekPricing.map(item => `
+      <tr>
+        <td>${this.escapeHtml(item.model)}</td>
+        <td>${item.input}</td>
+        <td>${item.cache}</td>
+        <td>${item.output}</td>
+        <td style="font-size: 10px; color: #888;">${item.note || ''}</td>
+      </tr>
+    `).join('');
 
-      if (valueEl) valueEl.textContent = String(this.timeoutState.remaining);
+    const openaiRows = openaiPricing.map(item => `
+      <tr>
+        <td>${this.escapeHtml(item.model)}</td>
+        <td>$${item.input}</td>
+        <td>${item.cache === '-' ? '-' : '$' + item.cache}</td>
+        <td>${item.output === '-' ? '-' : '$' + item.output}</td>
+      </tr>
+    `).join('');
 
-      if (this.timeoutState.remaining <= 0) {
-        this.onTimeoutExpired();
+    content.innerHTML = `
+      <div class="modal-header">
+        <span class="modal-title">API 模型价格表</span>
+        <button class="btn btn-tiny btn-secondary" id="pricing-close-btn" style="margin-left: auto;">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; max-height: 60vh;">
+        <!-- DeepSeek 价格 -->
+        <div class="pricing-section">
+          <h4 style="color: #4fc3f7; margin: 0 0 8px 0; font-size: 13px;">🔷 DeepSeek</h4>
+          <p style="font-size: 10px; color: #888; margin-bottom: 8px;">价格单位: 人民币 / 百万 tokens | 上下文: 128K</p>
+          <table class="pricing-table">
+            <thead>
+              <tr>
+                <th>模型</th>
+                <th>输入</th>
+                <th>缓存命中</th>
+                <th>输出</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${deepseekRows}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- OpenAI 价格 -->
+        <div class="pricing-section" style="margin-top: 16px;">
+          <h4 style="color: #4caf50; margin: 0 0 8px 0; font-size: 13px;">🟢 OpenAI</h4>
+          <p style="font-size: 10px; color: #888; margin-bottom: 8px;">价格单位: 美元 / 百万 tokens</p>
+          <table class="pricing-table">
+            <thead>
+              <tr>
+                <th>模型</th>
+                <th>输入</th>
+                <th>缓存输入</th>
+                <th>输出</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${openaiRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="pricing-ok-btn">关闭</button>
+      </div>
+    `;
+
+    overlay.appendChild(content);
+    document.body.appendChild(overlay);
+
+    const cleanup = () => {
+      document.body.removeChild(overlay);
+    };
+
+    content.querySelector('#pricing-close-btn')?.addEventListener('click', cleanup);
+    content.querySelector('#pricing-ok-btn')?.addEventListener('click', cleanup);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup();
+    });
+  }
+
+  // ==================== Resize Handles ====================
+
+  private initResizeHandles(): void {
+    const handle = document.getElementById('ai-analysis-resize-handle');
+    const container = document.getElementById('ai-analysis-result');
+
+    if (!handle || !container) return;
+
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    handle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = container.offsetHeight;
+      handle.classList.add('active');
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const delta = e.clientY - startY;
+      const newHeight = Math.min(Math.max(startHeight + delta, 100), 600);
+      container.style.maxHeight = newHeight + 'px';
+      container.style.height = newHeight + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        handle.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
       }
-    }, 1000);
+    });
   }
 
-  private stopTimeoutSimulation(): void {
-    if (!this.timeoutState.isRunning) return;
+  // ==================== Screenshot Preview ====================
 
-    if (this.timeoutState.intervalId !== null) {
-      clearInterval(this.timeoutState.intervalId);
-      this.timeoutState.intervalId = null;
-    }
-
-    this.timeoutState.isRunning = false;
-
-    const displayEl = document.getElementById('timeout-display');
-    const valueEl = displayEl?.querySelector('.timeout-value');
-    const statusEl = document.getElementById('timeout-status');
-    const statusTextEl = statusEl?.querySelector('.timeout-status-text');
-    const startBtn = document.getElementById('start-timeout-btn') as HTMLButtonElement;
-    const stopBtn = document.getElementById('stop-timeout-btn') as HTMLButtonElement;
-
-    if (displayEl) displayEl.classList.remove('running', 'expired');
-    if (valueEl) valueEl.textContent = '--';
-    if (statusTextEl) {
-      statusTextEl.textContent = '已停止';
-      statusTextEl.classList.remove('waiting', 'expired');
-    }
-    if (startBtn) startBtn.disabled = false;
-    if (stopBtn) stopBtn.disabled = true;
-
-    this.log('超时模拟', '倒计时已停止');
-  }
-
-  private onTimeoutExpired(): void {
-    if (this.timeoutState.intervalId !== null) {
-      clearInterval(this.timeoutState.intervalId);
-      this.timeoutState.intervalId = null;
-    }
-
-    this.timeoutState.isRunning = false;
-
-    const displayEl = document.getElementById('timeout-display');
-    const valueEl = displayEl?.querySelector('.timeout-value');
-    const statusEl = document.getElementById('timeout-status');
-    const statusTextEl = statusEl?.querySelector('.timeout-status-text');
-    const startBtn = document.getElementById('start-timeout-btn') as HTMLButtonElement;
-    const stopBtn = document.getElementById('stop-timeout-btn') as HTMLButtonElement;
-
-    if (displayEl) {
-      displayEl.classList.remove('running');
-      displayEl.classList.add('expired');
-    }
-    if (valueEl) valueEl.textContent = '0';
-    if (statusTextEl) {
-      statusTextEl.textContent = '超时! 等待输入已超过 30 秒';
-      statusTextEl.classList.remove('waiting');
-      statusTextEl.classList.add('expired');
-    }
-    if (startBtn) startBtn.disabled = false;
-    if (stopBtn) stopBtn.disabled = true;
-
-    this.log('超时模拟', '30 秒超时已到期!', 'error');
-  }
-
-  // 6.10 危险命令测试
-  private async checkDangerousCommand(): Promise<void> {
-    const inputEl = document.getElementById('danger-command-input') as HTMLInputElement;
-    const resultEl = document.getElementById('danger-result');
-    const command = inputEl?.value.trim() || '';
-
-    if (!command) {
-      this.log('危险检测', '请输入命令', 'error');
+  private showScreenshotPreview(): void {
+    if (!this.lastScreenshotDataUrl) {
+      this.log('预览', '没有可预览的截图', 'error');
       return;
     }
 
-    this.log('危险检测', `检测命令: ${command.substring(0, 50)}...`);
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
 
-    const response = await this.sendToBackground<{
-      success: boolean;
-      data: { isDangerous: boolean; matchedPattern: string | null; description: string | null };
-    }>({
-      type: 'CHECK_DANGEROUS',
-      command,
+    const overlay = document.createElement('div');
+    overlay.className = 'screenshot-preview-overlay';
+
+    const container = document.createElement('div');
+    container.className = 'screenshot-preview-container';
+
+    const img = document.createElement('img');
+    img.className = 'screenshot-preview-image';
+    img.src = this.lastScreenshotDataUrl;
+    img.alt = '截图预览';
+
+    const zoomInfo = document.createElement('div');
+    zoomInfo.className = 'screenshot-zoom-info';
+    zoomInfo.textContent = '100%';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'screenshot-preview-close';
+    closeBtn.innerHTML = '×';
+    closeBtn.title = '关闭 (Esc)';
+
+    const controls = document.createElement('div');
+    controls.className = 'screenshot-preview-controls';
+    controls.innerHTML = `
+      <button class="btn btn-secondary" id="zoom-out-btn" title="缩小">−</button>
+      <button class="btn btn-secondary" id="zoom-reset-btn" title="重置">1:1</button>
+      <button class="btn btn-secondary" id="zoom-in-btn" title="放大">+</button>
+    `;
+
+    container.appendChild(img);
+    container.appendChild(controls);
+    overlay.appendChild(zoomInfo);
+    overlay.appendChild(closeBtn);
+    overlay.appendChild(container);
+    document.body.appendChild(overlay);
+
+    const updateTransform = () => {
+      img.style.transform = `scale(${scale}) translate(${translateX}px, ${translateY}px)`;
+      zoomInfo.textContent = `${Math.round(scale * 100)}%`;
+    };
+
+    const cleanup = () => {
+      document.body.removeChild(overlay);
+    };
+
+    // Zoom controls
+    controls.querySelector('#zoom-in-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      scale = Math.min(scale * 1.25, 5);
+      updateTransform();
     });
 
-    if (!resultEl) return;
+    controls.querySelector('#zoom-out-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      scale = Math.max(scale / 1.25, 0.25);
+      updateTransform();
+    });
 
-    if (response?.success && response.data) {
-      const { isDangerous, description } = response.data;
+    controls.querySelector('#zoom-reset-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      scale = 1;
+      translateX = 0;
+      translateY = 0;
+      updateTransform();
+    });
 
-      if (isDangerous) {
-        resultEl.className = 'danger-result dangerous';
-        resultEl.innerHTML = `
-          <div style="display: flex; align-items: center;">
-            <span class="danger-result-icon">⚠️</span>
-            <span class="danger-result-text">危险命令!</span>
-          </div>
-          <div class="danger-matched-pattern">
-            <strong>原因:</strong> ${description || '匹配危险模式'}
-          </div>
-        `;
-        this.log('危险检测', `危险! ${description}`, 'error');
+    // Mouse wheel zoom
+    overlay.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        scale = Math.min(scale * 1.1, 5);
       } else {
-        resultEl.className = 'danger-result safe';
-        resultEl.innerHTML = `
-          <div style="display: flex; align-items: center;">
-            <span class="danger-result-icon">✓</span>
-            <span class="danger-result-text">命令安全</span>
-          </div>
-        `;
-        this.log('危险检测', '命令安全', 'success');
+        scale = Math.max(scale / 1.1, 0.25);
       }
-    } else {
-      resultEl.className = 'danger-result';
-      resultEl.innerHTML = '<div class="debug-empty">检测失败</div>';
-      this.log('危险检测', '检测失败', 'error');
-    }
-  }
-
-  // 6.11 注入回滚测试
-  private async injectTestText(): Promise<void> {
-    if (!this.activeSessionId) {
-      this.log('注入测试', '请先选择活动会话', 'error');
-      return;
-    }
-
-    const inputEl = document.getElementById('rollback-test-input') as HTMLInputElement;
-    const statusEl = document.getElementById('rollback-status');
-    const rollbackBtn = document.getElementById('rollback-test-btn') as HTMLButtonElement;
-    const text = inputEl?.value || '测试注入文本';
-
-    this.log('注入测试', `正在注入: ${text.substring(0, 30)}...`);
-
-    // 先获取当前值用于回滚
-    const currentValueResponse = await this.sendToContent<{ value: string }>({
-      type: 'GET_INPUT_VALUE',
+      updateTransform();
     });
 
-    this.rollbackState.previousValue = currentValueResponse?.value || '';
-    this.rollbackState.sessionId = this.activeSessionId;
-
-    // 执行注入
-    const response = await this.sendToContent<{ success: boolean }>({
-      type: 'PREVIEW_INPUT',
-      sessionId: this.activeSessionId,
-      text,
+    // Drag to pan
+    img.addEventListener('mousedown', (e) => {
+      if (scale > 1) {
+        isDragging = true;
+        dragStartX = e.clientX - translateX * scale;
+        dragStartY = e.clientY - translateY * scale;
+        container.classList.add('dragging');
+        e.preventDefault();
+      }
     });
 
-    if (!statusEl) return;
-
-    if (response?.success) {
-      this.rollbackState.isInjected = true;
-      statusEl.className = 'rollback-status injected';
-      statusEl.innerHTML = `
-        <div class="rollback-step">
-          <span class="rollback-step-icon done">✓</span>
-          <span>已注入: "${this.escapeHtml(text.substring(0, 30))}${text.length > 30 ? '...' : ''}"</span>
-        </div>
-        <div class="rollback-step">
-          <span class="rollback-step-icon pending">2</span>
-          <span>点击"回滚"恢复原值</span>
-        </div>
-      `;
-      if (rollbackBtn) rollbackBtn.disabled = false;
-      this.log('注入测试', '注入成功', 'success');
-    } else {
-      statusEl.innerHTML = '<div class="debug-empty">注入失败</div>';
-      this.log('注入测试', '注入失败', 'error');
-    }
-  }
-
-  private async rollbackTestText(): Promise<void> {
-    if (!this.rollbackState.isInjected || !this.rollbackState.sessionId) {
-      this.log('回滚测试', '没有可回滚的内容', 'error');
-      return;
-    }
-
-    const statusEl = document.getElementById('rollback-status');
-    const rollbackBtn = document.getElementById('rollback-test-btn') as HTMLButtonElement;
-
-    this.log('回滚测试', '正在回滚...');
-
-    // 清除预览并恢复
-    await this.sendToContent({
-      type: 'CLEAR_PREVIEW',
-      sessionId: this.rollbackState.sessionId,
+    overlay.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        translateX = (e.clientX - dragStartX) / scale;
+        translateY = (e.clientY - dragStartY) / scale;
+        updateTransform();
+      }
     });
 
-    // 如果有之前的值，恢复它
-    if (this.rollbackState.previousValue) {
-      await this.sendToContent({
-        type: 'PREVIEW_INPUT',
-        sessionId: this.rollbackState.sessionId,
-        text: this.rollbackState.previousValue,
-      });
-      // 再清除高亮
-      await this.sendToContent({
-        type: 'CLEAR_PREVIEW',
-        sessionId: this.rollbackState.sessionId,
-      });
-    }
+    overlay.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        container.classList.remove('dragging');
+      }
+    });
 
-    this.rollbackState.isInjected = false;
+    // Close handlers
+    closeBtn.addEventListener('click', cleanup);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup();
+    });
 
-    if (statusEl) {
-      statusEl.className = 'rollback-status rolledback';
-      statusEl.innerHTML = `
-        <div class="rollback-step">
-          <span class="rollback-step-icon done">✓</span>
-          <span>已注入</span>
-        </div>
-        <div class="rollback-step">
-          <span class="rollback-step-icon done">✓</span>
-          <span>已回滚到原值${this.rollbackState.previousValue ? `: "${this.escapeHtml(this.rollbackState.previousValue.substring(0, 20))}"` : ''}</span>
-        </div>
-      `;
-    }
-    if (rollbackBtn) rollbackBtn.disabled = true;
-    this.log('回滚测试', '回滚成功', 'success');
-  }
-
-  // ==================== Action Confirmation Modal ====================
-
-  private showConfirmationModal(action: PendingAction): Promise<boolean> {
-    return new Promise((resolve) => {
-      // 创建模态框
-      const overlay = document.createElement('div');
-      overlay.className = 'modal-overlay';
-
-      const content = document.createElement('div');
-      content.className = 'modal-content';
-
-      content.innerHTML = `
-        <div class="modal-header">
-          <span class="modal-icon warning">⚠️</span>
-          <span class="modal-title">确认执行</span>
-        </div>
-        <div class="modal-body">
-          <p class="modal-message">确定要执行以下命令吗？</p>
-          <div class="modal-command">${this.escapeHtml(action.command)}</div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="modal-cancel-btn">取消</button>
-          <button class="btn btn-warning" id="modal-confirm-btn">确认执行</button>
-        </div>
-      `;
-
-      overlay.appendChild(content);
-      document.body.appendChild(overlay);
-
-      const cancelBtn = content.querySelector('#modal-cancel-btn');
-      const confirmBtn = content.querySelector('#modal-confirm-btn');
-
-      const cleanup = () => {
-        document.body.removeChild(overlay);
-      };
-
-      cancelBtn?.addEventListener('click', () => {
+    document.addEventListener('keydown', function escHandler(e) {
+      if (e.key === 'Escape') {
         cleanup();
-        resolve(false);
-      });
-
-      confirmBtn?.addEventListener('click', () => {
-        cleanup();
-        resolve(true);
-      });
-
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) {
-          cleanup();
-          resolve(false);
-        }
-      });
+        document.removeEventListener('keydown', escHandler);
+      }
     });
   }
 
