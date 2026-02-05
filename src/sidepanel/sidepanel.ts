@@ -334,11 +334,9 @@ class DebugConsole {
       `;
     } else {
       modelEl.innerHTML = `
-        <option value="gpt-4o">gpt-4o</option>
         <option value="gpt-4o-mini">gpt-4o-mini</option>
+        <option value="gpt-4o">gpt-4o</option>
         <option value="gpt-4-turbo">gpt-4-turbo</option>
-        <option value="gpt-4">gpt-4</option>
-        <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
       `;
     }
 
