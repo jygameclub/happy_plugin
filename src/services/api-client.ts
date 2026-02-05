@@ -1,7 +1,7 @@
 // src/services/api-client.ts
 
 export interface APIConfig {
-  provider: 'deepseek' | 'openai';
+  provider: 'openai';
   apiKey: string;
   baseUrl: string;
   model?: string; // 可选的模型名称
@@ -25,16 +25,7 @@ export class APIClient {
    * 获取默认模型名称
    */
   private getDefaultModel(): string {
-    if (this.config.model) {
-      return this.config.model;
-    }
-    switch (this.config.provider) {
-      case 'openai':
-        return 'gpt-4o';
-      case 'deepseek':
-      default:
-        return 'deepseek-chat';
-    }
+    return this.config.model || 'gpt-4o-mini';
   }
 
   async checkConnection(): Promise<APIResponse<{ connected: boolean }>> {

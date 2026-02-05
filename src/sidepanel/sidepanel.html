@@ -21,23 +21,14 @@
         <span class="panel-title">AI 分析反馈</span>
       </div>
       <div class="panel-content" id="ai-analysis-content">
-        <!-- API 和模型选择 -->
-        <div class="form-row" style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label class="label">API:</label>
-            <select class="input-select" id="ai-analysis-provider">
-              <option value="openai" selected>OpenAI</option>
-              <option value="deepseek">DeepSeek</option>
-            </select>
-          </div>
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label class="label">模型:</label>
-            <select class="input-select" id="ai-analysis-model">
-              <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
-              <option value="gpt-4o">gpt-4o</option>
-              <option value="gpt-4-turbo">gpt-4-turbo</option>
-            </select>
-          </div>
+        <!-- 模型选择 -->
+        <div class="form-group" style="margin-bottom: 10px;">
+          <label class="label">模型:</label>
+          <select class="input-select" id="ai-analysis-model">
+            <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
+            <option value="gpt-4o">gpt-4o</option>
+            <option value="gpt-4-turbo">gpt-4-turbo</option>
+          </select>
         </div>
         <div class="form-group">
           <label class="label">分析提示词（可自定义）:</label>
@@ -85,7 +76,7 @@
       <div class="panel-content" id="chat-test-content">
         <div class="chat-api-selector">
           <label class="label">API:</label>
-          <span class="api-label">DeepSeek</span>
+          <span class="api-label">OpenAI</span>
         </div>
         <div class="chat-messages" id="chat-messages">
           <div class="chat-empty">发送消息测试 API 是否正常工作</div>
@@ -197,48 +188,6 @@
         <span class="panel-title">环境 / API 配置</span>
       </div>
       <div class="panel-content" id="environment-content">
-        <!-- API 选择 -->
-        <div class="form-group" style="margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <label class="label" style="margin-bottom: 0;">当前使用的 API:</label>
-            <button class="btn btn-tiny btn-secondary" id="show-pricing-btn" title="查看价格">💰 价格</button>
-          </div>
-          <select class="input-select" id="active-api-provider" style="margin-top: 6px;">
-            <option value="deepseek">DeepSeek</option>
-            <option value="openai">OpenAI</option>
-          </select>
-        </div>
-
-        <!-- DeepSeek API 配置 -->
-        <div class="api-config-section">
-          <div class="api-config-header">
-            <span class="api-name">DeepSeek API</span>
-            <span class="api-indicator" id="deepseek-status">--</span>
-          </div>
-          <div class="api-config-form" id="deepseek-config-form">
-            <div class="form-group">
-              <label class="label" for="deepseek-base-url">Base URL:</label>
-              <input type="text" class="input-text" id="deepseek-base-url" placeholder="https://api.deepseek.com">
-            </div>
-            <div class="form-group">
-              <label class="label" for="deepseek-api-key">API Key:</label>
-              <input type="password" class="input-text" id="deepseek-api-key" placeholder="输入 API Key">
-            </div>
-            <div class="form-group">
-              <label class="label" for="deepseek-model">模型:</label>
-              <select class="input-select" id="deepseek-model">
-                <option value="deepseek-chat">deepseek-chat</option>
-                <option value="deepseek-coder">deepseek-coder</option>
-                <option value="deepseek-reasoner">deepseek-reasoner</option>
-              </select>
-            </div>
-            <div class="btn-group">
-              <button class="btn btn-small btn-secondary" id="save-deepseek-btn">保存</button>
-              <button class="btn btn-small btn-primary" id="check-deepseek-btn">检查连接</button>
-            </div>
-          </div>
-        </div>
-
         <!-- OpenAI API 配置 -->
         <div class="api-config-section">
           <div class="api-config-header">

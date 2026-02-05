@@ -50,10 +50,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     case 'CHECK_API': {
       const config = message.config as APIConfig;
-      const provider = message.provider as 'deepseek';
       if (!config || !config.apiKey || !config.baseUrl) {
         sendResponse({
-          provider,
+          provider: 'openai',
           connected: false,
           latency: null,
           error: '未配置 API Key 或 Base URL',
@@ -64,7 +63,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       aiJudge.setClient(apiClient);
       apiClient.checkConnection().then((result) => {
         sendResponse({
-          provider,
+          provider: 'openai',
           connected: result.success && result.data?.connected === true,
           latency: result.latency ?? null,
           error: result.error ?? null,
@@ -171,8 +170,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const start = Date.now();
 
       // 使用配置中的模型，如果没有则使用默认值
-      const defaultModel = chatConfig.provider === 'openai' ? 'gpt-4o' : 'deepseek-chat';
-      const chatModel = chatConfig.model || defaultModel;
+      const chatModel = chatConfig.model || 'gpt-4o-mini';
       const endpoint = '/chat/completions';
       const body = {
         model: chatModel,
@@ -245,8 +243,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const startTime = Date.now();
 
       // 使用配置中的模型，如果没有则使用默认视觉模型
-      const defaultVisionModel = screenshotConfig.provider === 'openai' ? 'gpt-4o' : 'deepseek-chat';
-      const visionModel = screenshotConfig.model || defaultVisionModel;
+      const visionModel = screenshotConfig.model || 'gpt-4o-mini';
       const visionEndpoint = '/chat/completions';
       const visionBody = {
         model: visionModel,

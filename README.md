@@ -31,8 +31,8 @@
 ### AI 分析反馈
 
 - **截图分析**: 捕获当前页面截图，AI 自动分析并给出建议
-- **多 API 支持**: 支持 DeepSeek 和 OpenAI API
-- **模型选择**: 可选择不同的 AI 模型（deepseek-chat、deepseek-coder、gpt-4o 等）
+- **OpenAI 支持**: 使用 OpenAI GPT-4o/GPT-4o-mini 等视觉模型
+- **模型选择**: 可选择不同的 AI 模型（gpt-4o-mini、gpt-4o、gpt-4-turbo）
 - **自定义提示词**: 可自定义分析提示词
 
 ### 开发工具
@@ -126,16 +126,9 @@ happy_plugin/
 
 ## API 配置
 
-### DeepSeek API
-
-1. 在侧边栏打开"环境配置"面板
-2. 输入 DeepSeek API Key
-3. Base URL 默认为: `https://api.deepseek.com/v1`
-4. 点击"检查连接"验证配置
-
 ### OpenAI API
 
-1. 在"环境配置"面板切换到 OpenAI 标签
+1. 在侧边栏打开"环境 / API 配置"面板
 2. 输入 OpenAI API Key
 3. Base URL 默认为: `https://api.openai.com/v1`
 4. 点击"检查连接"验证配置
@@ -144,7 +137,7 @@ happy_plugin/
 
 1. 点击扩展图标打开弹出窗口
 2. 点击"打开调试面板"进入侧边栏控制台
-3. 配置 API（DeepSeek 或 OpenAI）
+3. 配置 OpenAI API
 4. 使用"截图分析"功能让 AI 分析当前页面
 5. 使用"扫描会话"检测终端会话
 6. 选择要交互的会话进行操作

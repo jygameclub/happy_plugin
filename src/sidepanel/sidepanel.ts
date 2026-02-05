@@ -27,7 +27,7 @@ interface ChatMessageData {
   index: number;
 }
 
-type APIProvider = 'deepseek' | 'openai';
+type APIProvider = 'openai';
 
 // 固定的格式化提示词
 const FORMAT_PROMPT = `
@@ -51,7 +51,6 @@ class DebugConsole {
   private delaySendState: DelaySendState = { timerId: null, remaining: 0, text: '', isActive: false };
   private sessionRoles: Map<string, SessionRole> = new Map();
   private chatMessages: ChatMessageData[] = [];
-  private activeProvider: APIProvider = 'deepseek';
   private lastScreenshotDataUrl: string | null = null;
 
   constructor() {
@@ -81,45 +80,24 @@ class DebugConsole {
   // ==================== Event Listeners ====================
 
   private initEventListeners(): void {
-    // API Provider 选择
-    document.getElementById('active-api-provider')?.addEventListener('change', (e) => {
-      this.activeProvider = (e.target as HTMLSelectElement).value as APIProvider;
-      this.saveActiveProvider();
-      this.log('配置', `已切换到 ${this.activeProvider.toUpperCase()} API`);
-    });
-
     // 显示价格按钮
     document.getElementById('show-pricing-btn')?.addEventListener('click', () => {
       this.showPricingModal();
     });
 
-    // Environment / API Config section - DeepSeek
-    document.getElementById('save-deepseek-btn')?.addEventListener('click', () => {
-      this.saveAPIConfig('deepseek');
-    });
-    document.getElementById('check-deepseek-btn')?.addEventListener('click', () => {
-      this.checkAPI('deepseek');
-    });
-
     // Environment / API Config section - OpenAI
     document.getElementById('save-openai-btn')?.addEventListener('click', () => {
-      this.saveAPIConfig('openai');
+      this.saveAPIConfig();
     });
     document.getElementById('check-openai-btn')?.addEventListener('click', () => {
-      this.checkAPI('openai');
+      this.checkAPI();
     });
-
-    // Auto-save on blur for API config inputs - DeepSeek
-    const baseUrlEl = document.getElementById('deepseek-base-url');
-    const apiKeyEl = document.getElementById('deepseek-api-key');
-    baseUrlEl?.addEventListener('blur', () => this.saveAPIConfig('deepseek'));
-    apiKeyEl?.addEventListener('blur', () => this.saveAPIConfig('deepseek'));
 
     // Auto-save on blur for API config inputs - OpenAI
     const openaiBaseUrlEl = document.getElementById('openai-base-url');
     const openaiApiKeyEl = document.getElementById('openai-api-key');
-    openaiBaseUrlEl?.addEventListener('blur', () => this.saveAPIConfig('openai'));
-    openaiApiKeyEl?.addEventListener('blur', () => this.saveAPIConfig('openai'));
+    openaiBaseUrlEl?.addEventListener('blur', () => this.saveAPIConfig());
+    openaiApiKeyEl?.addEventListener('blur', () => this.saveAPIConfig());
 
     // API Test Chat section
     document.getElementById('chat-send-btn')?.addEventListener('click', () => {
@@ -157,10 +135,6 @@ class DebugConsole {
     });
     document.getElementById('ai-analysis-btn')?.addEventListener('click', () => {
       this.analyzeWithAI();
-    });
-    // AI 分析区域 provider 切换时更新模型列表
-    document.getElementById('ai-analysis-provider')?.addEventListener('change', (e) => {
-      this.updateAIAnalysisModelOptions((e.target as HTMLSelectElement).value as APIProvider);
     });
     // 截图比例滑块
     document.getElementById('screenshot-crop-percent')?.addEventListener('input', (e) => {
@@ -278,14 +252,6 @@ class DebugConsole {
   private async loadAPIConfigs(): Promise<void> {
     const configs = await this.configStorage.getAll();
 
-    // 加载 DeepSeek 配置
-    const deepseekBaseUrl = document.getElementById('deepseek-base-url') as HTMLInputElement;
-    const deepseekApiKey = document.getElementById('deepseek-api-key') as HTMLInputElement;
-    const deepseekModel = document.getElementById('deepseek-model') as HTMLSelectElement;
-    if (deepseekBaseUrl) deepseekBaseUrl.value = configs.deepseek.baseUrl;
-    if (deepseekApiKey) deepseekApiKey.value = configs.deepseek.apiKey;
-    if (deepseekModel && configs.deepseek.model) deepseekModel.value = configs.deepseek.model;
-
     // 加载 OpenAI 配置
     const openaiBaseUrl = document.getElementById('openai-base-url') as HTMLInputElement;
     const openaiApiKey = document.getElementById('openai-api-key') as HTMLInputElement;
@@ -294,86 +260,14 @@ class DebugConsole {
     if (openaiApiKey) openaiApiKey.value = configs.openai.apiKey;
     if (openaiModel && configs.openai.model) openaiModel.value = configs.openai.model;
 
-    // 加载当前选择的 provider
-    await this.loadActiveProvider();
-
-    // 同步 AI 分析区域的 provider 和 model 选择
-    this.syncAIAnalysisSelectors();
-
     this.log('配置', '已加载 API 配置');
   }
 
-  /**
-   * 同步 AI 分析区域的 API 和模型选择
-   */
-  private syncAIAnalysisSelectors(): void {
-    const providerEl = document.getElementById('ai-analysis-provider') as HTMLSelectElement;
-    if (providerEl) {
-      providerEl.value = this.activeProvider;
-    }
-    this.updateAIAnalysisModelOptions(this.activeProvider);
-  }
-
-  /**
-   * 根据选择的 provider 更新 AI 分析区域的模型选项
-   */
-  private updateAIAnalysisModelOptions(provider: APIProvider): void {
-    const modelEl = document.getElementById('ai-analysis-model') as HTMLSelectElement;
-    if (!modelEl) return;
-
-    // 获取当前配置中保存的模型
-    const configModelEl = document.getElementById(`${provider}-model`) as HTMLSelectElement;
-    const savedModel = configModelEl?.value;
-
-    // 根据 provider 更新选项
-    if (provider === 'deepseek') {
-      modelEl.innerHTML = `
-        <option value="deepseek-chat">deepseek-chat</option>
-        <option value="deepseek-coder">deepseek-coder</option>
-        <option value="deepseek-reasoner">deepseek-reasoner</option>
-      `;
-    } else {
-      modelEl.innerHTML = `
-        <option value="gpt-4o-mini">gpt-4o-mini</option>
-        <option value="gpt-4o">gpt-4o</option>
-        <option value="gpt-4-turbo">gpt-4-turbo</option>
-      `;
-    }
-
-    // 如果有保存的模型，选中它
-    if (savedModel) {
-      modelEl.value = savedModel;
-    }
-  }
-
-  private async loadActiveProvider(): Promise<void> {
-    try {
-      const result = await chrome.storage.local.get('activeAPIProvider');
-      if (result.activeAPIProvider) {
-        this.activeProvider = result.activeAPIProvider as APIProvider;
-      }
-      const selectEl = document.getElementById('active-api-provider') as HTMLSelectElement;
-      if (selectEl) {
-        selectEl.value = this.activeProvider;
-      }
-    } catch (error) {
-      console.error('[Happy Debug] loadActiveProvider error:', error);
-    }
-  }
-
-  private async saveActiveProvider(): Promise<void> {
-    try {
-      await chrome.storage.local.set({ activeAPIProvider: this.activeProvider });
-    } catch (error) {
-      console.error('[Happy Debug] saveActiveProvider error:', error);
-    }
-  }
-
-  private async saveAPIConfig(provider: APIProvider): Promise<void> {
-    const baseUrlEl = document.getElementById(`${provider}-base-url`) as HTMLInputElement;
-    const apiKeyEl = document.getElementById(`${provider}-api-key`) as HTMLInputElement;
-    const modelEl = document.getElementById(`${provider}-model`) as HTMLSelectElement;
-    const saveBtn = document.getElementById(`save-${provider}-btn`);
+  private async saveAPIConfig(): Promise<void> {
+    const baseUrlEl = document.getElementById('openai-base-url') as HTMLInputElement;
+    const apiKeyEl = document.getElementById('openai-api-key') as HTMLInputElement;
+    const modelEl = document.getElementById('openai-model') as HTMLSelectElement;
+    const saveBtn = document.getElementById('save-openai-btn');
 
     if (!baseUrlEl || !apiKeyEl) return;
 
@@ -387,8 +281,8 @@ class DebugConsole {
     if (saveBtn) saveBtn.classList.add('loading');
 
     try {
-      await this.configStorage.save(provider, config);
-      this.log('配置', `${provider.toUpperCase()} 配置已保存`, 'success');
+      await this.configStorage.save('openai', config);
+      this.log('配置', 'OpenAI 配置已保存', 'success');
 
       // 视觉反馈
       baseUrlEl.classList.remove('error');
@@ -408,10 +302,10 @@ class DebugConsole {
     }
   }
 
-  private getAPIConfigFromForm(provider: APIProvider): { apiKey: string; baseUrl: string; model?: string } | null {
-    const baseUrlEl = document.getElementById(`${provider}-base-url`) as HTMLInputElement;
-    const apiKeyEl = document.getElementById(`${provider}-api-key`) as HTMLInputElement;
-    const modelEl = document.getElementById(`${provider}-model`) as HTMLSelectElement;
+  private getAPIConfigFromForm(): { apiKey: string; baseUrl: string; model?: string } | null {
+    const baseUrlEl = document.getElementById('openai-base-url') as HTMLInputElement;
+    const apiKeyEl = document.getElementById('openai-api-key') as HTMLInputElement;
+    const modelEl = document.getElementById('openai-model') as HTMLSelectElement;
 
     if (!baseUrlEl || !apiKeyEl) return null;
 
@@ -426,32 +320,32 @@ class DebugConsole {
   }
 
   /**
-   * 获取当前选择的 API 配置
+   * 获取当前 API 配置
    */
   private getActiveAPIConfig(): { provider: APIProvider; apiKey: string; baseUrl: string; model?: string } | null {
-    const config = this.getAPIConfigFromForm(this.activeProvider);
+    const config = this.getAPIConfigFromForm();
     if (!config) return null;
     return {
-      provider: this.activeProvider,
+      provider: 'openai',
       ...config,
     };
   }
 
   // ==================== API Check ====================
 
-  async checkAPI(provider: APIProvider): Promise<void> {
-    const statusEl = document.getElementById(`${provider}-status`);
-    const btn = document.getElementById(`check-${provider}-btn`);
+  async checkAPI(): Promise<void> {
+    const statusEl = document.getElementById('openai-status');
+    const btn = document.getElementById('check-openai-btn');
 
     // 获取当前表单中的配置
-    const formConfig = this.getAPIConfigFromForm(provider);
+    const formConfig = this.getAPIConfigFromForm();
 
     if (!formConfig) {
       if (statusEl) {
         statusEl.textContent = '未配置';
         statusEl.className = 'api-indicator error';
       }
-      this.log('API检查', `${provider.toUpperCase()} 未配置 API Key 或 Base URL`, 'error');
+      this.log('API检查', 'OpenAI 未配置 API Key 或 Base URL', 'error');
       return;
     }
 
@@ -461,13 +355,13 @@ class DebugConsole {
     }
     if (btn) btn.classList.add('loading');
 
-    this.log('API检查', `正在检查 ${provider.toUpperCase()} API...`);
+    this.log('API检查', '正在检查 OpenAI API...');
 
     const response = await this.sendToBackground<APIStatus>({
       type: 'CHECK_API',
-      provider,
+      provider: 'openai',
       config: {
-        provider,
+        provider: 'openai',
         apiKey: formConfig.apiKey,
         baseUrl: formConfig.baseUrl,
       },
@@ -480,13 +374,13 @@ class DebugConsole {
         statusEl.textContent = `${response.latency}ms`;
         statusEl.className = 'api-indicator connected';
       }
-      this.log('API检查', `${provider.toUpperCase()} 已连接 (${response.latency}ms)`, 'success');
+      this.log('API检查', `OpenAI 已连接 (${response.latency}ms)`, 'success');
     } else {
       if (statusEl) {
         statusEl.textContent = 'Error';
         statusEl.className = 'api-indicator error';
       }
-      this.log('API检查', `${provider.toUpperCase()} 失败: ${response?.error || '未知错误'}`, 'error');
+      this.log('API检查', `OpenAI 失败: ${response?.error || '未知错误'}`, 'error');
     }
   }
 
@@ -504,8 +398,8 @@ class DebugConsole {
     const activeConfig = this.getActiveAPIConfig();
 
     if (!activeConfig) {
-      this.addChatMessage(`请先配置 ${this.activeProvider.toUpperCase()} 的 API Key 和 Base URL`, 'error');
-      this.log('聊天', `${this.activeProvider.toUpperCase()} 未配置`, 'error');
+      this.addChatMessage('请先配置 OpenAI 的 API Key 和 Base URL', 'error');
+      this.log('聊天', 'OpenAI 未配置', 'error');
       return;
     }
 
@@ -514,7 +408,7 @@ class DebugConsole {
     inputEl.value = '';
 
     if (sendBtn) sendBtn.classList.add('loading');
-    this.log('聊天', `发送到 ${this.activeProvider.toUpperCase()}: ${message.substring(0, 30)}...`);
+    this.log('聊天', `发送到 OpenAI: ${message.substring(0, 30)}...`);
 
     const response = await this.sendToBackground<{
       success: boolean;
@@ -523,10 +417,10 @@ class DebugConsole {
       latency?: number;
     }>({
       type: 'CHAT_TEST',
-      provider: this.activeProvider,
+      provider: 'openai',
       message,
       config: {
-        provider: this.activeProvider,
+        provider: 'openai',
         apiKey: activeConfig.apiKey,
         baseUrl: activeConfig.baseUrl,
         model: activeConfig.model,
@@ -537,10 +431,10 @@ class DebugConsole {
 
     if (response?.success && response.content) {
       this.addChatMessage(response.content, 'assistant', response.latency);
-      this.log('聊天', `${this.activeProvider.toUpperCase()} 响应成功 (${response.latency}ms)`, 'success');
+      this.log('聊天', `OpenAI 响应成功 (${response.latency}ms)`, 'success');
     } else {
       this.addChatMessage(response?.error || '请求失败', 'error');
-      this.log('聊天', `${this.activeProvider.toUpperCase()} 失败: ${response?.error || '未知错误'}`, 'error');
+      this.log('聊天', `OpenAI 失败: ${response?.error || '未知错误'}`, 'error');
     }
   }
 
@@ -961,18 +855,15 @@ class DebugConsole {
    * 获取 AI 分析区域选择的配置
    */
   private getAIAnalysisConfig(): { provider: APIProvider; apiKey: string; baseUrl: string; model?: string } | null {
-    const providerEl = document.getElementById('ai-analysis-provider') as HTMLSelectElement;
     const modelEl = document.getElementById('ai-analysis-model') as HTMLSelectElement;
-
-    const provider = (providerEl?.value || 'deepseek') as APIProvider;
     const model = modelEl?.value;
 
-    // 从对应 provider 的配置表单中获取 apiKey 和 baseUrl
-    const config = this.getAPIConfigFromForm(provider);
+    // 从 OpenAI 配置表单中获取 apiKey 和 baseUrl
+    const config = this.getAPIConfigFromForm();
     if (!config) return null;
 
     return {
-      provider,
+      provider: 'openai',
       apiKey: config.apiKey,
       baseUrl: config.baseUrl,
       model: model || config.model,
@@ -1113,40 +1004,29 @@ class DebugConsole {
     const viewBtn = document.getElementById('view-screenshot-btn');
     const resultEl = document.getElementById('ai-analysis-result');
     const promptEl = document.getElementById('ai-analysis-prompt') as HTMLTextAreaElement;
-    const providerEl = document.getElementById('ai-analysis-provider') as HTMLSelectElement;
     const modelEl = document.getElementById('ai-analysis-model') as HTMLSelectElement;
 
     const userPrompt = promptEl?.value.trim() || '分析右边区域的内容，判断最应该选择底部哪个按钮';
-    const selectedProvider = (providerEl?.value || 'deepseek') as APIProvider;
-    const selectedModel = modelEl?.value || '';
+    const selectedModel = modelEl?.value || 'gpt-4o-mini';
 
     // 组合用户提示词和格式化提示词
     const fullPrompt = userPrompt + FORMAT_PROMPT;
 
-    // 检查 DeepSeek 是否支持视觉分析
-    if (selectedProvider === 'deepseek') {
-      if (resultEl) {
-        resultEl.innerHTML = `<div class="analysis-error">⚠️ DeepSeek API 不支持图像分析功能。<br><br>请切换到 OpenAI (gpt-4o) 进行截图分析，或使用 DeepSeek 进行纯文本分析。</div>`;
-      }
-      this.log('AI分析', 'DeepSeek 不支持图像分析', 'error');
-      return;
-    }
-
-    // 检查 API 配置（使用 AI 分析区域选择的 provider）
+    // 检查 API 配置
     const analysisConfig = this.getAIAnalysisConfig();
     if (!analysisConfig) {
       if (resultEl) {
-        resultEl.innerHTML = `<div class="analysis-error">请先在"环境 / API 配置"中配置 ${selectedProvider.toUpperCase()} API</div>`;
+        resultEl.innerHTML = '<div class="analysis-error">请先在"环境 / API 配置"中配置 OpenAI API</div>';
       }
-      this.log('AI分析', `${selectedProvider.toUpperCase()} API 未配置`, 'error');
+      this.log('AI分析', 'OpenAI API 未配置', 'error');
       return;
     }
 
     if (btn) btn.classList.add('loading');
     if (resultEl) {
-      resultEl.innerHTML = `<div class="analysis-loading">正在使用 ${selectedProvider.toUpperCase()} (${selectedModel}) 截图分析中...</div>`;
+      resultEl.innerHTML = `<div class="analysis-loading">正在使用 OpenAI (${selectedModel}) 截图分析中...</div>`;
     }
-    this.log('AI分析', `开始截图分析 (${selectedProvider.toUpperCase()} / ${selectedModel})...`);
+    this.log('AI分析', `开始截图分析 (OpenAI / ${selectedModel})...`);
 
     try {
       // 1. 截取当前页面
@@ -1360,12 +1240,6 @@ class DebugConsole {
   // ==================== Pricing Modal ====================
 
   private showPricingModal(): void {
-    // DeepSeek 价格 (人民币/百万tokens)
-    const deepseekPricing = [
-      { model: 'deepseek-chat', input: '2元', cache: '0.2元', output: '3元', note: 'DeepSeek-V3.2 非思考模式' },
-      { model: 'deepseek-reasoner', input: '2元', cache: '0.2元', output: '3元', note: 'DeepSeek-V3.2 思考模式' },
-    ];
-
     // OpenAI 价格 (美元/百万tokens)
     const openaiPricing = [
       { model: 'gpt-5.2', input: '1.75', cache: '0.175', output: '14.00' },
@@ -1422,18 +1296,8 @@ class DebugConsole {
 
     const content = document.createElement('div');
     content.className = 'modal-content pricing-modal';
-    content.style.maxWidth = '650px';
+    content.style.maxWidth = '550px';
     content.style.maxHeight = '80vh';
-
-    const deepseekRows = deepseekPricing.map(item => `
-      <tr>
-        <td>${this.escapeHtml(item.model)}</td>
-        <td>${item.input}</td>
-        <td>${item.cache}</td>
-        <td>${item.output}</td>
-        <td style="font-size: 10px; color: #888;">${item.note || ''}</td>
-      </tr>
-    `).join('');
 
     const openaiRows = openaiPricing.map(item => `
       <tr>
@@ -1446,48 +1310,24 @@ class DebugConsole {
 
     content.innerHTML = `
       <div class="modal-header">
-        <span class="modal-title">API 模型价格表</span>
+        <span class="modal-title">OpenAI 模型价格表</span>
         <button class="btn btn-tiny btn-secondary" id="pricing-close-btn" style="margin-left: auto;">✕</button>
       </div>
       <div class="modal-body" style="overflow-y: auto; max-height: 60vh;">
-        <!-- DeepSeek 价格 -->
-        <div class="pricing-section">
-          <h4 style="color: #4fc3f7; margin: 0 0 8px 0; font-size: 13px;">🔷 DeepSeek</h4>
-          <p style="font-size: 10px; color: #888; margin-bottom: 8px;">价格单位: 人民币 / 百万 tokens | 上下文: 128K</p>
-          <table class="pricing-table">
-            <thead>
-              <tr>
-                <th>模型</th>
-                <th>输入</th>
-                <th>缓存命中</th>
-                <th>输出</th>
-                <th>说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${deepseekRows}
-            </tbody>
-          </table>
-        </div>
-
-        <!-- OpenAI 价格 -->
-        <div class="pricing-section" style="margin-top: 16px;">
-          <h4 style="color: #4caf50; margin: 0 0 8px 0; font-size: 13px;">🟢 OpenAI</h4>
-          <p style="font-size: 10px; color: #888; margin-bottom: 8px;">价格单位: 美元 / 百万 tokens</p>
-          <table class="pricing-table">
-            <thead>
-              <tr>
-                <th>模型</th>
-                <th>输入</th>
-                <th>缓存输入</th>
-                <th>输出</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${openaiRows}
-            </tbody>
-          </table>
-        </div>
+        <p style="font-size: 10px; color: #888; margin-bottom: 8px;">价格单位: 美元 / 百万 tokens</p>
+        <table class="pricing-table">
+          <thead>
+            <tr>
+              <th>模型</th>
+              <th>输入</th>
+              <th>缓存输入</th>
+              <th>输出</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${openaiRows}
+          </tbody>
+        </table>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="pricing-ok-btn">关闭</button>
